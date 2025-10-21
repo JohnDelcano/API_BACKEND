@@ -10,13 +10,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Default route for testing
+app.get("/", (req, res) => {
+  res.send("LIBROSYNC API is running 🚀");
+});
+
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("✅ Connected to MongoDB Atlas"))
   .catch(err => console.error("❌ MongoDB connection error:", err));
 
 // Use the router for /api/books
-app.use("/api/books", bookRoutes); 
+app.use("/api/books", bookRoutes);
 
 const PORT = process.env.PORT || 50000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
