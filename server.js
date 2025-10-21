@@ -16,10 +16,6 @@ app.get("/", (req, res) => {
   res.send("LIBROSYNC API is running 🚀");
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
-});
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -29,6 +25,11 @@ mongoose.connect(process.env.MONGODB_URI)
 // Use the router for /api/books
 app.use("/api/books", bookRoutes);
 app.use("/api/announcements", AnnouncementsRoutes);
+
+// 404 handler (must come after all routes)
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
 
 const PORT = process.env.PORT || 50000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
