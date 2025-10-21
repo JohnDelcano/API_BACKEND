@@ -38,4 +38,26 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+// Update a book
+router.put("/:id", async (req, res) => {
+  try {
+    const { book_id, title, author, quantity, quality, picture } = req.body;
+
+    // Find the book by ID and update it
+    const updatedBook = await Book.findByIdAndUpdate(
+      req.params.id,
+      { book_id, title, author, quantity, quality, picture },
+      { new: true, runValidators: true } // new: true returns the updated document
+    );
+
+    if (!updatedBook) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+
+    res.json({ message: "Book updated successfully!", book: updatedBook });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating book", error: err.message });
+  }
+});
+
 export default router;
