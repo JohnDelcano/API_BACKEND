@@ -21,7 +21,6 @@ router.post("/", async (req, res) => {
     const newAnnouncement = new Announcement({
       title,
       content,
-      author,
       createdAt: new Date(),
     });
 
