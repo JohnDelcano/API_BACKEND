@@ -10,7 +10,7 @@ const studentSchema = new mongoose.Schema({
   phone: { type: String },
   address: { type: String },
   schoolname: { type: String },
-  guardian: { type: String },
+  guardian: { type: number },
   guardianname: { type: String },
   gender: { type: String },
   genre: { type: [String], default: [] }, 
