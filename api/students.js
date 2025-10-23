@@ -26,45 +26,115 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// Registered Account
+
 // Register (accepts optional profilePicture file)
 router.post("/register", upload.single("profilePicture"), async (req, res) => {
   try {
-    const { firstName, lastName, email, password, birthday, phone } = req.body;
-    if (!firstName || !lastName || !email || !password) return res.status(400).json({ message: "Missing required fields" });
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      birthday,
+      phone,
+      address,
+      schoolname,
+      guardian,
+      guardianname,
+      gender
+    } = req.body;
 
+    // Required fields check
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Check if email already exists
     const existing = await Student.findOne({ email });
-    if (existing) return res.status(409).json({ message: "Email already taken" });
+    if (existing) {
+      return res.status(409).json({ message: "Email already taken" });
+    }
 
+    // Hash password
     const hash = await bcrypt.hash(password, 10);
+
+    // Get profile picture from Cloudinary or optional body
     const profilePicture = req.file?.path ?? req.body.profilePicture;
-    const student = new Student({ firstName, lastName, email, password: hash, profilePicture, birthday, phone });
+
+    // Create new student with all fields
+    const student = new Student({
+      firstName,
+      lastName,
+      email,
+      password: hash,
+      profilePicture,
+      birthday,
+      phone,
+      address,
+      schoolname,
+      guardian,
+      guardianname,
+      gender
+    });
+
     await student.save();
-    res.status(201).json({ message: "Student registered" });
+
+    res.status(201).json({ message: "Student registered", student: { ...student.toObject(), password: undefined } });
   } catch (err) {
     res.status(500).json({ message: "Registration error", error: err.message });
   }
 });
 
-// Sign in Using email and password
-router.post("/Signin", async (req, res) => {
+
+// Sign in using email and password
+router.post("/signin", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Email and password required" });
 
+    // Check required fields
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password required" });
+    }
+
+    // Find student by email
     const student = await Student.findOne({ email });
-    if (!student) return res.status(401).json({ message: "Invalid credentials" });
+    if (!student) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
-    const match = await bcrypt.compare(password, student.password);
-    if (!match) return res.status(401).json({ message: "Invalid credentials" });
+    // Compare password
+    const isMatch = await bcrypt.compare(password, student.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
+    // Generate JWT token
     const payload = { id: student._id, email: student.email };
     const token = jwt.sign(payload, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
-    res.json({ token });
+
+    res.json({
+      message: "Login successful",
+      token,
+      student: {
+        id: student._id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        email: student.email,
+        profilePicture: student.profilePicture,
+        birthday: student.birthday,
+        phone: student.phone,
+        address: student.address,
+        schoolname: student.schoolname,
+        guardian: student.guardian,
+        guardianname: student.guardianname,
+        gender: student.gender,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: "Login error", error: err.message });
   }
 });
+
 
 // Get current student info (protected)
 router.get("/me", async (req, res) => {
