@@ -13,7 +13,7 @@ const studentSchema = new mongoose.Schema({
   guardian: { type: String },
   guardianname: { type: String },
   gender: { type: String },
-  genre: { type: String },
+  genre: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
