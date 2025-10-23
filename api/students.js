@@ -3,31 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Student from "../models/Student.js";
 import Book from "../models/Book.js";
-import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 
 const router = express.Router();
-
-// ---------------------------
-// CONFIGURE CLOUDINARY
-// ---------------------------
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "librosync/students",
-    allowed_formats: ["jpg", "jpeg", "png"],
-    transformation: [{ width: 800, crop: "limit" }],
-  },
-});
-
-const upload = multer({ storage });
 
 // ---------------------------
 // RECOMMENDED BOOKS
@@ -107,11 +84,22 @@ router.get("/:studentId/favorites", async (req, res) => {
 // ---------------------------
 // AUTH & REGISTRATION
 // ---------------------------
-router.post("/register", upload.single("profilePicture"), async (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const {
-      firstName, lastName, email, password, birthday, phone, address,
-      schoolname, guardian, guardianname, gender, genre
+      firstName,
+      lastName,
+      email,
+      password,
+      birthday,
+      phone,
+      address,
+      schoolname,
+      guardian,
+      guardianname,
+      gender,
+      genre,
+      profilePicture
     } = req.body;
 
     if (!firstName || !lastName || !email || !password)
@@ -122,22 +110,43 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
     if (existing) return res.status(409).json({ success: false, message: "Email already taken" });
 
     const hash = await bcrypt.hash(password, 10);
-    const profilePicture = req.file?.path ?? req.body.profilePicture;
+
+    // Ensure genre is an array
+    const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
     const student = new Student({
-      firstName, lastName, email: emailLower, password: hash, profilePicture,
-      birthday: birthdayDate, phone, address, schoolname, guardian, guardianname, gender, genre
+      firstName,
+      lastName,
+      email: emailLower,
+      password: hash,
+      profilePicture, // Cloudinary URL
+      birthday: birthdayDate,
+      phone,
+      address,
+      schoolname,
+      guardian,
+      guardianname,
+      gender,
+      genre: parsedGenre
     });
 
     await student.save();
 
-    res.status(201).json({ success: true, message: "Student registered", student: { ...student.toObject(), password: undefined } });
+    res.status(201).json({
+      success: true,
+      message: "Student registered",
+      student: { ...student.toObject(), password: undefined }
+    });
   } catch (err) {
+    console.error("Registration error:", err);
     res.status(500).json({ success: false, message: "Registration error", error: err.message });
   }
 });
 
+// ---------------------------
+// GOOGLE LOGIN
+// ---------------------------
 router.post("/google", async (req, res) => {
   try {
     const { email, firstName, lastName, profilePicture } = req.body;
@@ -148,13 +157,21 @@ router.post("/google", async (req, res) => {
       await student.save();
     }
 
-    const token = jwt.sign({ id: student._id, email: student.email }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
+    const token = jwt.sign(
+      { id: student._id, email: student.email },
+      process.env.JWT_SECRET || "dev_secret",
+      { expiresIn: "7d" }
+    );
+
     res.json({ success: true, message: "Login successful", token, student });
   } catch (err) {
     res.status(500).json({ success: false, message: "Google login error", error: err.message });
   }
 });
 
+// ---------------------------
+// SIGNIN
+// ---------------------------
 router.post("/signin", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -166,7 +183,12 @@ router.post("/signin", async (req, res) => {
     const isMatch = await bcrypt.compare(password, student.password);
     if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials" });
 
-    const token = jwt.sign({ id: student._id, email: student.email }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
+    const token = jwt.sign(
+      { id: student._id, email: student.email },
+      process.env.JWT_SECRET || "dev_secret",
+      { expiresIn: "7d" }
+    );
+
     res.json({ success: true, message: "Login successful", token, student: { ...student.toObject(), password: undefined } });
   } catch (err) {
     res.status(500).json({ success: false, message: "Login error", error: err.message });
@@ -192,7 +214,7 @@ router.get("/me", async (req, res) => {
   }
 });
 
-router.put("/me", upload.single("profilePicture"), async (req, res) => {
+router.put("/me", async (req, res) => {
   try {
     const auth = req.headers.authorization;
     if (!auth) return res.status(401).json({ success: false, message: "Authorization header missing" });
@@ -202,14 +224,17 @@ router.put("/me", upload.single("profilePicture"), async (req, res) => {
     const student = await Student.findById(decoded.id);
     if (!student) return res.status(404).json({ success: false, message: "Student not found" });
 
-    // Update all profile fields
-    const fields = ["firstName", "lastName", "birthday", "phone", "address", "schoolname", "guardian", "guardianname", "gender", "genre"];
+    // Update profile fields
+    const fields = ["firstName", "lastName", "birthday", "phone", "address", "schoolname", "guardian", "guardianname", "gender", "genre", "profilePicture"];
     fields.forEach(field => {
-      if (req.body[field]) student[field] = req.body[field];
+      if (req.body[field]) {
+        if (field === "genre") {
+          student.genre = Array.isArray(req.body.genre) ? req.body.genre : JSON.parse(req.body.genre || "[]");
+        } else {
+          student[field] = req.body[field];
+        }
+      }
     });
-
-    const profilePicture = req.file?.path ?? req.body.profilePicture;
-    if (profilePicture) student.profilePicture = profilePicture;
 
     await student.save();
     res.json({ success: true, message: "Profile updated", student: { ...student.toObject(), password: undefined } });
