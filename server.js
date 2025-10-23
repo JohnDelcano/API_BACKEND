@@ -4,6 +4,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import bookRoutes from "./api/books.js";
 import AnnouncementsRoutes from "./api/announcement.js";
+import adminRoutes from "./api/admin.js";
+import studentRoutes from "./api/students.js";
 
 dotenv.config();
 const app = express();
@@ -25,6 +27,8 @@ mongoose.connect(process.env.MONGODB_URI)
 // Use the router for /api/books
 app.use("/api/books", bookRoutes);
 app.use("/api/announcements", AnnouncementsRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/students", studentRoutes);
 
 // 404 handler (must come after all routes)
 app.use((req, res) => {

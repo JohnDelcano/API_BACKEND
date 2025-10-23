@@ -1,7 +1,28 @@
 import express from "express";
 import Book from "../models/Book.js";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 
 const router = express.Router();
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "librosync/books",
+    allowed_formats: ["jpg", "jpeg", "png"],
+    transformation: [{ width: 1200, crop: "limit" }],
+  },
+});
+
+const upload = multer({ storage });
 
 // GET all books
 router.get("/", async (req, res) => {
@@ -14,10 +35,12 @@ router.get("/", async (req, res) => {
 });
 
 // POST new book
-router.post("/", async (req, res) => {
+router.post("/", upload.single("picture"), async (req, res) => {
   try {
-    const { book_id, title, author, quantity, quality, picture } = req.body;
-    const newBook = new Book({ book_id, title, author, quantity, quality, picture });
+    const { book_id, title, author, quantity, quality } = req.body;
+    // Prefer uploaded file URL, fallback to picture from body (if provided)
+    const pictureUrl = req.file?.path ?? req.body.picture;
+    const newBook = new Book({ book_id, title, author, quantity, quality, picture: pictureUrl });
     await newBook.save();
     res.status(201).json({ message: "Book added successfully!", book: newBook });
   } catch (error) {
@@ -39,14 +62,19 @@ router.delete("/:id", async (req, res) => {
 });
 
 // Update a book
-router.put("/:id", async (req, res) => {
+router.put("/:id", upload.single("picture"), async (req, res) => {
   try {
-    const { book_id, title, author, quantity, quality, picture } = req.body;
+    const { book_id, title, author, quantity, quality } = req.body;
+    const pictureUrl = req.file?.path ?? req.body.picture;
+
+    // Build update object
+    const update = { book_id, title, author, quantity, quality };
+    if (pictureUrl) update.picture = pictureUrl;
 
     // Find the book by ID and update it
     const updatedBook = await Book.findByIdAndUpdate(
       req.params.id,
-      { book_id, title, author, quantity, quality, picture },
+      update,
       { new: true, runValidators: true } // new: true returns the updated document
     );
 

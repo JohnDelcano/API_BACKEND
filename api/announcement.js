@@ -3,7 +3,7 @@ import Announcement from "../models/Announcement.js";
 
 const router = express.Router();
 
-// GET all announcements
+// Display Announcements
 router.get("/", async (req, res) => {
   try {
     const announcements = await Announcement.find().sort({ createdAt: -1 }); // latest first
@@ -13,7 +13,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// POST new announcement
+// Add New Announcement
 router.post("/", async (req, res) => {
   try {
     const { title, content, author } = req.body;
