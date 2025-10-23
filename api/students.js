@@ -72,7 +72,7 @@ router.delete("/:studentId/favorites/:bookId", async (req, res) => {
 router.get("/:studentId/favorites", async (req, res) => {
   const { studentId } = req.params;
 
-  // ✅ Validate ObjectId
+  // Validate ObjectId
   if (!mongoose.Types.ObjectId.isValid(studentId)) {
     return res.status(400).json({
       success: false,
@@ -125,6 +125,7 @@ router.post("/register", async (req, res) => {
       guardianname,
       gender,
       genre,
+      grade,
       profilePicture
     } = req.body;
 
@@ -137,7 +138,6 @@ router.post("/register", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
 
-    // Ensure genre is an array
     const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
@@ -146,7 +146,7 @@ router.post("/register", async (req, res) => {
       lastName,
       email: emailLower,
       password: hash,
-      profilePicture, // Cloudinary URL
+      profilePicture,
       birthday: birthdayDate,
       phone,
       address,
@@ -154,8 +154,23 @@ router.post("/register", async (req, res) => {
       guardian,
       guardianname,
       gender,
-      genre: parsedGenre
+      genre: parsedGenre,
+      grade
     });
+
+    await student.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Student registered",
+      student: { ...student.toObject(), password: undefined }
+    });
+  } catch (err) {
+    console.error("Registration error:", err);
+    res.status(500).json({ success: false, message: "Registration error", error: err.message });
+  }
+});
+
 
     await student.save();
 

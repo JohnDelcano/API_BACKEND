@@ -9,6 +9,7 @@ const studentSchema = new mongoose.Schema({
   birthday: { type: Date },
   phone: { type: String },
   address: { type: String },
+  grade: { type: String },
   schoolname: { type: String },
   guardian: { type: String },
   guardianname: { type: String },
