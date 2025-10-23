@@ -70,16 +70,42 @@ router.delete("/:studentId/favorites/:bookId", async (req, res) => {
 });
 
 router.get("/:studentId/favorites", async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const student = await Student.findById(studentId).populate("favorites");
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+  const { studentId } = req.params;
 
-    res.json({ success: true, data: student.favorites });
+  // ✅ Validate ObjectId
+  if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid student ID",
+      favorites: [],
+    });
+  }
+
+  try {
+    const student = await Student.findById(studentId).populate("favorites");
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+        favorites: [],
+      });
+    }
+
+    res.json({
+      success: true,
+      favorites: student.favorites || [],
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Error fetching favorites", error: err.message });
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching favorites",
+      error: err.message,
+      favorites: [],
+    });
   }
 });
+
 
 // ---------------------------
 // AUTH & REGISTRATION
