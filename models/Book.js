@@ -6,7 +6,11 @@ const bookSchema = new mongoose.Schema({
   author: { type: String },
   quantity: { type: Number },
   quality: { type: String },
-  picture: { type: String }
+  picture: { type: String },
+  genre: { type: String },         
+  favoritesCount: { type: Number, default: 0 }, 
+  createdAt: { type: Date, default: Date.now }  
 });
+
 
 export default mongoose.model("Book", bookSchema, "books");

@@ -24,7 +24,9 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// ✅ GET all books
+// ---------------------------
+// GET all books
+// ---------------------------
 router.get("/", async (req, res) => {
   try {
     const books = await Book.find();
@@ -34,12 +36,53 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ POST new book
+// ---------------------------
+// GET recommended books (sorted by favoritesCount)
+// ---------------------------
+router.get("/recommended", async (req, res) => {
+  try {
+    const books = await Book.find().sort({ favoritesCount: -1 }).limit(10); // top 10
+    res.status(200).json(books);
+  } catch (error) {
+    res.status(500).json({ message: "Error getting recommended books", error: error.message });
+  }
+});
+
+// ---------------------------
+// GET random books
+// ---------------------------
+router.get("/random", async (req, res) => {
+  try {
+    const count = await Book.countDocuments();
+    const random = Math.floor(Math.random() * count);
+    const books = await Book.find().skip(random).limit(10); // random 10 books
+    res.status(200).json(books);
+  } catch (error) {
+    res.status(500).json({ message: "Error getting random books", error: error.message });
+  }
+});
+
+// ---------------------------
+// GET books by genre
+// ---------------------------
+router.get("/genre/:genre", async (req, res) => {
+  try {
+    const { genre } = req.params;
+    const books = await Book.find({ genre });
+    res.status(200).json(books);
+  } catch (error) {
+    res.status(500).json({ message: "Error getting books by genre", error: error.message });
+  }
+});
+
+// ---------------------------
+// POST new book
+// ---------------------------
 router.post("/", upload.single("picture"), async (req, res) => {
   try {
-    const { book_id, title, author, quantity, quality } = req.body;
+    const { book_id, title, author, quantity, quality, genre } = req.body;
     const pictureUrl = req.file?.path ?? req.body.picture;
-    const newBook = new Book({ book_id, title, author, quantity, quality, picture: pictureUrl });
+    const newBook = new Book({ book_id, title, author, quantity, quality, genre, picture: pictureUrl, favoritesCount: 0 });
     await newBook.save();
     res.status(201).json({ message: "Book added successfully!", book: newBook });
   } catch (error) {
@@ -47,26 +90,28 @@ router.post("/", upload.single("picture"), async (req, res) => {
   }
 });
 
-// ✅ DELETE a book
+// ---------------------------
+// DELETE a book
+// ---------------------------
 router.delete("/:id", async (req, res) => {
   try {
     const deletedBook = await Book.findByIdAndDelete(req.params.id);
-    if (!deletedBook) {
-      return res.status(404).json({ message: "Book not found" });
-    }
+    if (!deletedBook) return res.status(404).json({ message: "Book not found" });
     res.json({ message: "Book deleted successfully", book: deletedBook });
   } catch (error) {
     res.status(500).json({ message: "Error deleting book", error: error.message });
   }
 });
 
-// ✅ UPDATE a book
+// ---------------------------
+// UPDATE a book
+// ---------------------------
 router.put("/:id", upload.single("picture"), async (req, res) => {
   try {
-    const { book_id, title, author, quantity, quality } = req.body;
+    const { book_id, title, author, quantity, quality, genre } = req.body;
     const pictureUrl = req.file?.path ?? req.body.picture;
 
-    const update = { book_id, title, author, quantity, quality };
+    const update = { book_id, title, author, quantity, quality, genre };
     if (pictureUrl) update.picture = pictureUrl;
 
     const updatedBook = await Book.findByIdAndUpdate(req.params.id, update, {
@@ -74,10 +119,7 @@ router.put("/:id", upload.single("picture"), async (req, res) => {
       runValidators: true,
     });
 
-    if (!updatedBook) {
-      return res.status(404).json({ message: "Book not found" });
-    }
-
+    if (!updatedBook) return res.status(404).json({ message: "Book not found" });
     res.json({ message: "Book updated successfully!", book: updatedBook });
   } catch (error) {
     res.status(500).json({ message: "Error updating book", error: error.message });
