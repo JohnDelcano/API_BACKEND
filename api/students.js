@@ -30,15 +30,15 @@ const upload = multer({ storage });
 // Register (accepts optional profilePicture file)
 router.post("/register", upload.single("profilePicture"), async (req, res) => {
   try {
-    const { firstName, lastName, username, password, birthday, phone } = req.body;
-    if (!firstName || !lastName || !username || !password) return res.status(400).json({ message: "Missing required fields" });
+    const { firstName, lastName, email, password, birthday, phone } = req.body;
+    if (!firstName || !lastName || !email || !password) return res.status(400).json({ message: "Missing required fields" });
 
-    const existing = await Student.findOne({ username });
-    if (existing) return res.status(409).json({ message: "Username already taken" });
+    const existing = await Student.findOne({ email });
+    if (existing) return res.status(409).json({ message: "Email already taken" });
 
     const hash = await bcrypt.hash(password, 10);
     const profilePicture = req.file?.path ?? req.body.profilePicture;
-    const student = new Student({ firstName, lastName, username, password: hash, profilePicture, birthday, phone });
+    const student = new Student({ firstName, lastName, email, password: hash, profilePicture, birthday, phone });
     await student.save();
     res.status(201).json({ message: "Student registered" });
   } catch (err) {
@@ -46,19 +46,19 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
   }
 });
 
-// Sign in Using username and password
+// Sign in Using email and password
 router.post("/Signin", async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: "Username and password required" });
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ message: "Email and password required" });
 
-    const student = await Student.findOne({ username });
+    const student = await Student.findOne({ email });
     if (!student) return res.status(401).json({ message: "Invalid credentials" });
 
     const match = await bcrypt.compare(password, student.password);
     if (!match) return res.status(401).json({ message: "Invalid credentials" });
 
-    const payload = { id: student._id, username: student.username };
+    const payload = { id: student._id, email: student.email };
     const token = jwt.sign(payload, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
     res.json({ token });
   } catch (err) {
