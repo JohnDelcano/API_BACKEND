@@ -96,6 +96,31 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
   }
 });
 
+router.post('/google', async (req, res) => {
+  try {
+    const { email, firstName, lastName, profilePicture } = req.body;
+
+    let student = await Student.findOne({ email });
+    if (!student) {
+      student = new Student({
+        email,
+        firstName,
+        lastName,
+        profilePicture,
+        password: '', // or generate a random string
+      });
+      await student.save();
+    }
+
+    const token = jwt.sign({ id: student._id, email: student.email }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
+
+    res.json({ message: 'Login successful', token, student });
+  } catch (err) {
+    res.status(500).json({ message: 'Google login error', error: err.message });
+  }
+});
+
+
 
 // Sign in using email and password
 router.post("/signin", async (req, res) => {
