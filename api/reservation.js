@@ -1,10 +1,15 @@
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
-const Book = require("../models/Book");
-const Student = require("../models/Student");
-const Reservation = require("../models/Reservation");
+let Book = require("../models/Book");
+let Student = require("../models/Student");
+let Reservation = require("../models/Reservation");
 const { authenticate, isAdmin } = require("../middleware/auth");
+
+// Support mixed CJS/ESM model exports
+Book = Book && Book.default ? Book.default : Book;
+Student = Student && Student.default ? Student.default : Student;
+Reservation = Reservation && Reservation.default ? Reservation.default : Reservation;
 
 const MAX_ACTIVE_RESERVATIONS = 1;
 const COOLDOWN_MINUTES = [1, 5, 30]; // cooldown backoff
@@ -317,7 +322,7 @@ async function expireReservationsLoop() {
     let processed;
     do {
       processed = await expireReservationsBatch(100);
-      if (processed > 0) await new Promise(r => setTimeout(r, 200));
+      if (processed > 0) await new Promise((r) => setTimeout(r, 200));
     } while (processed > 0);
   } catch (err) {
     console.error("expireReservationsLoop failed", err);
