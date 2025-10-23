@@ -1,10 +1,31 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import Student from "../models/Student.js";
 import Book from "../models/Book.js";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 
 const router = express.Router();
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "students",
+    allowed_formats: ["jpg", "png", "jpeg"],
+  },
+});
+
+const upload = multer({ storage });
 
 // ---------------------------
 // RECOMMENDED BOOKS
@@ -72,45 +93,24 @@ router.delete("/:studentId/favorites/:bookId", async (req, res) => {
 router.get("/:studentId/favorites", async (req, res) => {
   const { studentId } = req.params;
 
-  // Validate ObjectId
   if (!mongoose.Types.ObjectId.isValid(studentId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid student ID",
-      favorites: [],
-    });
+    return res.status(400).json({ success: false, message: "Invalid student ID", favorites: [] });
   }
 
   try {
     const student = await Student.findById(studentId).populate("favorites");
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-        favorites: [],
-      });
-    }
+    if (!student) return res.status(404).json({ success: false, message: "Student not found", favorites: [] });
 
-    res.json({
-      success: true,
-      favorites: student.favorites || [],
-    });
+    res.json({ success: true, favorites: student.favorites || [] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching favorites",
-      error: err.message,
-      favorites: [],
-    });
+    res.status(500).json({ success: false, message: "Error fetching favorites", error: err.message, favorites: [] });
   }
 });
-
 
 // ---------------------------
 // AUTH & REGISTRATION
 // ---------------------------
-router.post("/register", async (req, res) => {
+router.post("/register", upload.single("profilePicture"), async (req, res) => {
   try {
     const {
       firstName,
@@ -125,29 +125,27 @@ router.post("/register", async (req, res) => {
       guardianname,
       gender,
       genre,
-      grade,
-      profilePicture
+      grade
     } = req.body;
 
-    if (!firstName || !lastName || !email || !password)
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+    if (!firstName || !lastName || !email || !password || !grade) {
+      return res.status(400).json({ success: false, message: "Missing required fields, including grade" });
+    }
 
-    const emailLower = email.trim().toLowerCase();
-    const existing = await Student.findOne({ email: emailLower });
+    const existing = await Student.findOne({ email: email.toLowerCase().trim() });
     if (existing) return res.status(409).json({ success: false, message: "Email already taken" });
 
-    const hash = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
-    const birthdayDate = birthday ? new Date(birthday) : undefined;
 
     const student = new Student({
       firstName,
       lastName,
-      email: emailLower,
-      password: hash,
-      profilePicture,
-      birthday: birthdayDate,
+      email: email.toLowerCase().trim(),
+      password: hashedPassword,
+      profilePicture: req.file?.path || "",
+      birthday: birthday ? new Date(birthday) : undefined,
       phone,
       address,
       schoolname,
@@ -157,20 +155,6 @@ router.post("/register", async (req, res) => {
       genre: parsedGenre,
       grade
     });
-
-    await student.save();
-
-    res.status(201).json({
-      success: true,
-      message: "Student registered",
-      student: { ...student.toObject(), password: undefined }
-    });
-  } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({ success: false, message: "Registration error", error: err.message });
-  }
-});
-
 
     await student.save();
 
@@ -198,11 +182,7 @@ router.post("/google", async (req, res) => {
       await student.save();
     }
 
-    const token = jwt.sign(
-      { id: student._id, email: student.email },
-      process.env.JWT_SECRET || "dev_secret",
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: student._id, email: student.email }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
 
     res.json({ success: true, message: "Login successful", token, student });
   } catch (err) {
@@ -224,11 +204,7 @@ router.post("/signin", async (req, res) => {
     const isMatch = await bcrypt.compare(password, student.password);
     if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials" });
 
-    const token = jwt.sign(
-      { id: student._id, email: student.email },
-      process.env.JWT_SECRET || "dev_secret",
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: student._id, email: student.email }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
 
     res.json({ success: true, message: "Login successful", token, student: { ...student.toObject(), password: undefined } });
   } catch (err) {
@@ -265,8 +241,7 @@ router.put("/me", async (req, res) => {
     const student = await Student.findById(decoded.id);
     if (!student) return res.status(404).json({ success: false, message: "Student not found" });
 
-    // Update profile fields
-    const fields = ["firstName", "lastName", "birthday", "phone", "address", "schoolname", "guardian", "guardianname", "gender", "genre", "profilePicture"];
+    const fields = ["firstName", "lastName", "birthday", "phone", "address", "schoolname", "guardian", "guardianname", "gender", "genre", "profilePicture", "grade"];
     fields.forEach(field => {
       if (req.body[field]) {
         if (field === "genre") {
@@ -278,6 +253,7 @@ router.put("/me", async (req, res) => {
     });
 
     await student.save();
+
     res.json({ success: true, message: "Profile updated", student: { ...student.toObject(), password: undefined } });
   } catch (err) {
     res.status(401).json({ success: false, message: "Invalid token", error: err.message });
