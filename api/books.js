@@ -24,31 +24,30 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// GET all books
+// ✅ GET all books
 router.get("/", async (req, res) => {
   try {
     const books = await Book.find();
-    res.status(201).json({ message: "Book added successfully!", book: newBook });
+    res.status(200).json(books);
   } catch (error) {
-    res.status(500).json({ message: "Error getting books", error });
+    res.status(500).json({ message: "Error getting books", error: error.message });
   }
 });
 
-// POST new book
+// ✅ POST new book
 router.post("/", upload.single("picture"), async (req, res) => {
   try {
     const { book_id, title, author, quantity, quality } = req.body;
-    // Prefer uploaded file URL, fallback to picture from body (if provided)
     const pictureUrl = req.file?.path ?? req.body.picture;
     const newBook = new Book({ book_id, title, author, quantity, quality, picture: pictureUrl });
     await newBook.save();
     res.status(201).json({ message: "Book added successfully!", book: newBook });
   } catch (error) {
-    res.status(500).json({ message: "Error adding book", error });
+    res.status(500).json({ message: "Error adding book", error: error.message });
   }
 });
 
-// Delete a book
+// ✅ DELETE a book
 router.delete("/:id", async (req, res) => {
   try {
     const deletedBook = await Book.findByIdAndDelete(req.params.id);
@@ -56,35 +55,32 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ message: "Book not found" });
     }
     res.json({ message: "Book deleted successfully", book: deletedBook });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting book", error: error.message });
   }
 });
 
-// Update a book
+// ✅ UPDATE a book
 router.put("/:id", upload.single("picture"), async (req, res) => {
   try {
     const { book_id, title, author, quantity, quality } = req.body;
     const pictureUrl = req.file?.path ?? req.body.picture;
 
-    // Build update object
     const update = { book_id, title, author, quantity, quality };
     if (pictureUrl) update.picture = pictureUrl;
 
-    // Find the book by ID and update it
-    const updatedBook = await Book.findByIdAndUpdate(
-      req.params.id,
-      update,
-      { new: true, runValidators: true } // new: true returns the updated document
-    );
+    const updatedBook = await Book.findByIdAndUpdate(req.params.id, update, {
+      new: true,
+      runValidators: true,
+    });
 
     if (!updatedBook) {
       return res.status(404).json({ message: "Book not found" });
     }
 
     res.json({ message: "Book updated successfully!", book: updatedBook });
-  } catch (err) {
-    res.status(500).json({ message: "Error updating book", error: err.message });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating book", error: error.message });
   }
 });
 
