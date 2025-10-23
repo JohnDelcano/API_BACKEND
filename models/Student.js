@@ -7,7 +7,7 @@ const studentSchema = new mongoose.Schema({
   password: { type: String, required: true },
   profilePicture: { type: String, default: "" },
   birthday: { type: Date },
-  phone: { type: String },
+  phone: { type: number },
   address: { type: String },
   schoolname: { type: String },
   guardian: { type: number },

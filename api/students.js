@@ -110,7 +110,7 @@ router.get("/:studentId/favorites", async (req, res) => {
 // ---------------------------
 // AUTH & REGISTRATION
 // ---------------------------
-router.post("/register", upload.single("profilePicture"), async (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const {
       firstName,
@@ -125,31 +125,41 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
       guardianname,
       gender,
       genre,
-      grade
+      grade,
+      profilePicture
     } = req.body;
 
-    if (!firstName || !lastName || !email || !password || !grade) {
-      return res.status(400).json({ success: false, message: "Missing required fields, including grade" });
+    if (!firstName || !lastName || !email || !password)
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+
+    // Validate phone numbers
+    if (phone && isNaN(Number(phone))) {
+      return res.status(400).json({ success: false, message: "Phone must be a number" });
+    }
+    if (guardian && isNaN(Number(guardian))) {
+      return res.status(400).json({ success: false, message: "Guardian phone must be a number" });
     }
 
-    const existing = await Student.findOne({ email: email.toLowerCase().trim() });
+    const emailLower = email.trim().toLowerCase();
+    const existing = await Student.findOne({ email: emailLower });
     if (existing) return res.status(409).json({ success: false, message: "Email already taken" });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 10);
 
     const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
+    const birthdayDate = birthday ? new Date(birthday) : undefined;
 
     const student = new Student({
       firstName,
       lastName,
-      email: email.toLowerCase().trim(),
-      password: hashedPassword,
-      profilePicture: req.file?.path || "",
-      birthday: birthday ? new Date(birthday) : undefined,
-      phone,
+      email: emailLower,
+      password: hash,
+      profilePicture,
+      birthday: birthdayDate,
+      phone: phone ? Number(phone) : undefined,         // <-- convert to number
       address,
       schoolname,
-      guardian,
+      guardian: guardian ? Number(guardian) : undefined, // <-- convert to number
       guardianname,
       gender,
       genre: parsedGenre,
@@ -168,6 +178,7 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
     res.status(500).json({ success: false, message: "Registration error", error: err.message });
   }
 });
+
 
 // ---------------------------
 // GOOGLE LOGIN
