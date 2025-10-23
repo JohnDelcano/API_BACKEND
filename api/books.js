@@ -28,7 +28,7 @@ const upload = multer({ storage });
 router.get("/", async (req, res) => {
   try {
     const books = await Book.find();
-    res.json(books);
+    res.status(201).json({ message: "Book added successfully!", book: newBook });
   } catch (error) {
     res.status(500).json({ message: "Error getting books", error });
   }
