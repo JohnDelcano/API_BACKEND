@@ -28,19 +28,26 @@ async function startSessionWithTxn() {
     }
     return { session, txnStarted };
   } catch (err) {
-    // startSession failed (rare). Log and return no session/txn so callers fall back safely.
     console.error("Failed to start Mongo session:", err && err.message);
     return { session: null, txnStarted: false };
   }
 }
 
+// Helper: validate ObjectId
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
+
 /**
  * POST /api/books/:bookId/reserve
- * Reserve a book
  */
 router.post("/:bookId/reserve", authenticate, async (req, res) => {
   const student = req.user;
   const bookId = req.params.bookId;
+
+  if (!isValidObjectId(bookId)) {
+    return res.status(400).json({ success: false, error: "Invalid bookId" });
+  }
 
   // cooldown check
   if (student.cooldownUntil && student.cooldownUntil > new Date()) {
@@ -60,13 +67,19 @@ router.post("/:bookId/reserve", authenticate, async (req, res) => {
     if (session) studentQuery.session(session);
     const studentDoc = await studentQuery.exec();
 
+    if (!studentDoc) {
+      if (txnStarted) await session.abortTransaction();
+      if (session) session.endSession();
+      return res.status(404).json({ success: false, error: "Student not found" });
+    }
+
     if ((studentDoc.activeReservations || 0) >= MAX_ACTIVE_RESERVATIONS) {
       if (txnStarted) await session.abortTransaction();
       if (session) session.endSession();
       return res.status(403).json({ success: false, error: "You already have an active reservation" });
     }
 
-    // decrement book availability
+    // decrement book availability atomically
     const bookQuery = Book.findOneAndUpdate(
       { _id: bookId, availableCount: { $gt: 0 } },
       { $inc: { availableCount: -1, reservedCount: 1 } },
@@ -87,20 +100,21 @@ router.post("/:bookId/reserve", authenticate, async (req, res) => {
       reservedAt: new Date(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     };
-    const reservation = await Reservation.create([reservationDoc], session ? { session } : {});
+    const created = await Reservation.create([reservationDoc], session ? { session } : {});
+    const reservation = Array.isArray(created) ? created[0] : created;
+
     studentDoc.activeReservations = (studentDoc.activeReservations || 0) + 1;
     if (session) await studentDoc.save({ session }); else await studentDoc.save();
 
     if (txnStarted) await session.commitTransaction();
     if (session) session.endSession();
 
-    res.status(201).json({ success: true, reservation: reservation[0] });
+    res.status(201).json({ success: true, reservation });
   } catch (err) {
     if (txnStarted) await session.abortTransaction();
     if (session) session.endSession();
     console.error("Reserve error:", err);
     const msg = err?.message || "Reservation failed";
-    // Map some common messages to HTTP status codes for better client handling.
     let status = 500;
     if (/No available copies/i.test(msg)) status = 400;
     else if (/active reservation/i.test(msg) || /already have an active reservation/i.test(msg)) status = 403;
@@ -112,17 +126,18 @@ router.post("/:bookId/reserve", authenticate, async (req, res) => {
  * GET /api/students/:studentId/reservations
  */
 router.get("/students/:studentId/reservations", authenticate, async (req, res) => {
-  // enforce that only student or admin can query
-  if (!req.user.isAdmin && req.user._id.toString() !== req.params.studentId) {
+  const sid = req.params.studentId;
+  if (!isValidObjectId(sid)) return res.status(400).json({ success: false, error: "Invalid studentId" });
+
+  if (!req.user.isAdmin && req.user._id.toString() !== sid) {
     return res.status(403).json({ success: false, error: "Forbidden" });
   }
+
   try {
-    const reservations = await Reservation.find({ studentId: req.params.studentId })
-      .populate("bookId")
-      .sort({ reservedAt: -1 });
+    const reservations = await Reservation.find({ studentId: sid }).populate("bookId").sort({ reservedAt: -1 });
     res.json({ success: true, reservations });
   } catch (err) {
-    console.error("Failed to list reservations for student", req.params.studentId, err);
+    console.error("Failed to list reservations for student", sid, err);
     res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
@@ -131,15 +146,18 @@ router.get("/students/:studentId/reservations", authenticate, async (req, res) =
  * GET /api/reservations/:id
  */
 router.get("/:id", authenticate, async (req, res) => {
+  const rid = req.params.id;
+  if (!isValidObjectId(rid)) return res.status(400).json({ success: false, error: "Invalid reservation id" });
+
   try {
-    const reservation = await Reservation.findById(req.params.id).populate("bookId studentId");
+    const reservation = await Reservation.findById(rid).populate("bookId studentId");
     if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
     if (!req.user.isAdmin && reservation.studentId._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, error: "Forbidden" });
     }
     res.json({ success: true, reservation });
   } catch (err) {
-    console.error("Failed to get reservation", req.params.id, err);
+    console.error("Failed to get reservation", rid, err);
     res.status(500).json({ success: false, error: "Failed to fetch reservation" });
   }
 });
@@ -148,9 +166,12 @@ router.get("/:id", authenticate, async (req, res) => {
  * DELETE /api/reservations/:id
  */
 router.delete("/:id", authenticate, async (req, res) => {
+  const rid = req.params.id;
+  if (!isValidObjectId(rid)) return res.status(400).json({ success: false, error: "Invalid reservation id" });
+
   const { session, txnStarted } = await startSessionWithTxn();
   try {
-    const reservationQuery = Reservation.findById(req.params.id);
+    const reservationQuery = Reservation.findById(rid);
     if (session) reservationQuery.session(session);
     const reservation = await reservationQuery.exec();
     if (!reservation) throw new Error("Reservation not found");
@@ -167,8 +188,12 @@ router.delete("/:id", authenticate, async (req, res) => {
       const studentQuery = Student.findById(reservation.studentId);
       if (session) studentQuery.session(session);
       const student = await studentQuery.exec();
-      student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
-      if (session) await student.save({ session }); else await student.save();
+      if (student) {
+        student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
+        if (session) await student.save({ session }); else await student.save();
+      } else {
+        console.warn("Student missing while cancelling reservation:", reservation.studentId);
+      }
     }
 
     reservation.status = "cancelled";
@@ -181,7 +206,7 @@ router.delete("/:id", authenticate, async (req, res) => {
   } catch (err) {
     if (txnStarted) await session.abortTransaction();
     if (session) session.endSession();
-    console.error("Failed to cancel reservation", req.params.id, err);
+    console.error("Failed to cancel reservation", rid, err);
     const msg = err?.message || "Failed to cancel reservation";
     let status = 400;
     if (/not found/i.test(msg)) status = 404;
@@ -194,9 +219,12 @@ router.delete("/:id", authenticate, async (req, res) => {
  * PUT /api/reservations/:id/mark-borrowed
  */
 router.put("/:id/mark-borrowed", authenticate, isAdmin, async (req, res) => {
+  const rid = req.params.id;
+  if (!isValidObjectId(rid)) return res.status(400).json({ success: false, error: "Invalid reservation id" });
+
   const { session, txnStarted } = await startSessionWithTxn();
   try {
-    const reservationQuery = Reservation.findById(req.params.id);
+    const reservationQuery = Reservation.findById(rid);
     if (session) reservationQuery.session(session);
     const reservation = await reservationQuery.exec();
     if (!reservation) throw new Error("Reservation not found");
@@ -213,8 +241,10 @@ router.put("/:id/mark-borrowed", authenticate, isAdmin, async (req, res) => {
     const studentQuery = Student.findById(reservation.studentId);
     if (session) studentQuery.session(session);
     const student = await studentQuery.exec();
-    student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
-    if (session) await student.save({ session }); else await student.save();
+    if (student) {
+      student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
+      if (session) await student.save({ session }); else await student.save();
+    }
 
     if (txnStarted) await session.commitTransaction();
     if (session) session.endSession();
@@ -223,7 +253,7 @@ router.put("/:id/mark-borrowed", authenticate, isAdmin, async (req, res) => {
   } catch (err) {
     if (txnStarted) await session.abortTransaction();
     if (session) session.endSession();
-    console.error("Failed to mark reservation borrowed", req.params.id, err);
+    console.error("Failed to mark reservation borrowed", rid, err);
     const msg = err?.message || "Failed to mark borrowed";
     let status = 400;
     if (/not found/i.test(msg)) status = 404;
