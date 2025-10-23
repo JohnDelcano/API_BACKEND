@@ -26,6 +26,52 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
+router.put("/:studentId/favorites/:bookId", async (req, res) => {
+  try {
+    const { studentId, bookId } = req.params;
+    const student = await Student.findById(studentId);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    if (!student.favorites.includes(bookId)) {
+      student.favorites.push(bookId);
+      await student.save();
+    }
+
+    res.json({ message: "Book added to favorites", favorites: student.favorites });
+  } catch (err) {
+    res.status(500).json({ message: "Error adding favorite", error: err.message });
+  }
+});
+
+
+router.get("/:studentId/favorites", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await Student.findById(studentId).populate("favorites");
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    res.json(student.favorites);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching favorites", error: err.message });
+  }
+});
+
+
+router.delete("/:studentId/favorites/:bookId", async (req, res) => {
+  try {
+    const { studentId, bookId } = req.params;
+    const student = await Student.findById(studentId);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+
+    student.favorites = student.favorites.filter(id => id.toString() !== bookId);
+    await student.save();
+
+    res.json({ message: "Book removed from favorites", favorites: student.favorites });
+  } catch (err) {
+    res.status(500).json({ message: "Error removing favorite", error: err.message });
+  }
+});
+
 
 // Register (accepts optional profilePicture file)
 router.post("/register", upload.single("profilePicture"), async (req, res) => {
