@@ -7,9 +7,15 @@ const bookSchema = new mongoose.Schema({
   quantity: { type: Number },
   quality: { type: String },
   picture: { type: String },
+  category: { type: String }, 
   genre: { type: String },         
   favoritesCount: { type: Number, default: 0 }, 
+  availableCount: { type: Number, default: 1 },
+  reservedCount: { type: Number, default: 0 },
+  borrowedCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }  
+}, {
+  timestamps: true,
 });
 
 

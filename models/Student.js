@@ -16,6 +16,9 @@ const studentSchema = new mongoose.Schema({
   genre: { type: [String], default: [] }, 
   grade: { type: String, required: true }, 
   favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
+  activeReservations: { type: Number, default: 0 },
+  cooldownUntil: { type: Date },
+  failedReservationAttempts: { type: Number, default: 0 },
 }, { timestamps: true });
 
 export default mongoose.model("Student", studentSchema);
