@@ -41,7 +41,8 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
       schoolname,
       guardian,
       guardianname,
-      gender
+      gender,
+      genre
     } = req.body;
 
     // Required fields check
@@ -80,7 +81,8 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
       schoolname,
       guardian,
       guardianname,
-      gender
+      gender,
+      genre
     });
 
     await student.save();
@@ -137,6 +139,7 @@ router.post("/signin", async (req, res) => {
         guardian: student.guardian,
         guardianname: student.guardianname,
         gender: student.gender,
+        genre: student.genre
       },
     });
   } catch (err) {
