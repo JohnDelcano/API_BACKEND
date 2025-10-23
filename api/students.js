@@ -209,7 +209,7 @@ router.post("/signin", async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
 
-    const student = await Student.findOne({ email });
+    const student = await Student.findOne({ email: email.trim().toLowerCase() });
     if (!student) return res.status(401).json({ success: false, message: "Invalid credentials" });
 
     const isMatch = await bcrypt.compare(password, student.password);
