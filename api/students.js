@@ -49,8 +49,11 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    // Normalize email
+    const emailLower = email.trim().toLowerCase();
+
     // Check if email already exists
-    const existing = await Student.findOne({ email });
+    const existing = await Student.findOne({ email: emailLower });
     if (existing) {
       return res.status(409).json({ message: "Email already taken" });
     }
@@ -58,17 +61,20 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
     // Hash password
     const hash = await bcrypt.hash(password, 10);
 
+    // Convert birthday string to Date
+    const birthdayDate = birthday ? new Date(birthday) : undefined;
+
     // Get profile picture from Cloudinary or optional body
     const profilePicture = req.file?.path ?? req.body.profilePicture;
 
-    // Create new student with all fields
+    // Create new student
     const student = new Student({
       firstName,
       lastName,
-      email,
+      email: emailLower,
       password: hash,
       profilePicture,
-      birthday,
+      birthday: birthdayDate,
       phone,
       address,
       schoolname,
@@ -79,7 +85,10 @@ router.post("/register", upload.single("profilePicture"), async (req, res) => {
 
     await student.save();
 
-    res.status(201).json({ message: "Student registered", student: { ...student.toObject(), password: undefined } });
+    res.status(201).json({
+      message: "Student registered",
+      student: { ...student.toObject(), password: undefined }
+    });
   } catch (err) {
     res.status(500).json({ message: "Registration error", error: err.message });
   }
