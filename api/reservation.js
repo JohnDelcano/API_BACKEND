@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
-import { authenticate, isAdmin } from "../middleware/auth.js";
 
 // Handle mixed exports
 Book = Book && Book.default ? Book.default : Book;
