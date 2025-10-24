@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
-import { authenticate } from "../middleware/auth.js"; // make sure you import your auth middleware
+import { authenticate } from "../auth.js"; // make sure you import your auth middleware
 
 const router = express.Router();
 
