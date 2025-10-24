@@ -4,11 +4,9 @@ import mongoose from "mongoose";
 import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
+import { authenticate } from "../middleware/auth.js"; // make sure you import your auth middleware
 
-// Handle mixed exports
-Book = Book && Book.default ? Book.default : Book;
-Student = Student && Student.default ? Student.default : Student;
-Reservation = Reservation && Reservation.default ? Reservation.default : Reservation;
+const router = express.Router();
 
 const MAX_ACTIVE_RESERVATIONS = 1;
 const COOLDOWN_MINUTES = [1, 5, 30]; // cooldown backoff
@@ -65,8 +63,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
   const { session, txnStarted } = await startSessionWithTxn();
   try {
     const studentDoc = await Student.findById(student._id).session(session);
-    if (!studentDoc)
-      throw new Error("Student not found");
+    if (!studentDoc) throw new Error("Student not found");
 
     if ((studentDoc.activeReservations || 0) >= MAX_ACTIVE_RESERVATIONS)
       throw new Error("You already have an active reservation");
@@ -77,14 +74,13 @@ router.post("/:bookId", authenticate, async (req, res) => {
       { new: true, session }
     );
 
-    if (!book)
-      throw new Error("No available copies");
+    if (!book) throw new Error("No available copies");
 
     const reservationDoc = {
       bookId,
       studentId: studentDoc._id,
       reservedAt: new Date(),
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour expiry
       status: "reserved",
     };
 
