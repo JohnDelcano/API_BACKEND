@@ -1,11 +1,10 @@
 // api/reservation.js
-const express = require("express");
-const router = express.Router();
-const mongoose = require("mongoose");
-let Book = require("../models/Book");
-let Student = require("../models/Student");
-let Reservation = require("../models/Reservation");
-const { authenticate, isAdmin } = require("../middleware/auth");
+import express from "express";
+import mongoose from "mongoose";
+import Book from "../models/Book.js";
+import Student from "../models/Student.js";
+import Reservation from "../models/Reservation.js";
+import { authenticate, isAdmin } from "../middleware/auth.js";
 
 // Handle mixed exports
 Book = Book && Book.default ? Book.default : Book;
