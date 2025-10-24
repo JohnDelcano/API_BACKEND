@@ -44,4 +44,4 @@ const reservationSchema = new Schema({
 reservationSchema.index({ studentId: 1, status: 1 }); // fast lookup for active reservations
 reservationSchema.index({ expiresAt: 1 }); // for expiry job
 
-module.exports = mongoose.model("Reservation", reservationSchema);
+export default mongoose.model("Reservation", reservationSchema);

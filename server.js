@@ -7,7 +7,7 @@ import bookRoutes from "./api/books.js";
 import announcementRoutes from "./api/announcement.js";
 import adminRoutes from "./api/admin.js";
 import studentRoutes from "./api/students.js";
-import reservationRoutes from "./api/reservation.js"; // ✅ This should be the router, not the model!
+import reservationRoutes from "./api/reservation.js"; 
 
 dotenv.config();
 const app = express();
