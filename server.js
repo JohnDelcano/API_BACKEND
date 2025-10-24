@@ -31,7 +31,7 @@ app.use("/api/books", bookRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/students", studentRoutes);
-app.use("/api/reservation", reservationRoutes); s
+app.use("/api/reservation", reservationRoutes);
 
 // 404 handler (must come after all routes)
 app.use((req, res) => {
