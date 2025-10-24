@@ -1,3 +1,4 @@
+// api/reservation.js
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
@@ -6,7 +7,7 @@ let Student = require("../models/Student");
 let Reservation = require("../models/Reservation");
 const { authenticate, isAdmin } = require("../middleware/auth");
 
-// Support mixed CJS/ESM model exports
+// Handle mixed exports
 Book = Book && Book.default ? Book.default : Book;
 Student = Student && Student.default ? Student.default : Student;
 Reservation = Reservation && Reservation.default ? Reservation.default : Reservation;
@@ -19,7 +20,11 @@ function computeCooldown(attempt) {
   return new Date(Date.now() + mins * 60 * 1000);
 }
 
-// Helper: start a session and attempt to start a transaction
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
+
+// Utility for safe transactions
 async function startSessionWithTxn() {
   try {
     const session = await mongoose.startSession();
@@ -28,33 +33,27 @@ async function startSessionWithTxn() {
       session.startTransaction();
       txnStarted = true;
     } catch (err) {
-      // Transactions unavailable (likely standalone mongod). Proceed without txn.
-      console.warn("Transactions unavailable: proceeding without transaction.", err?.message);
+      console.warn("Transactions unavailable — proceeding without transaction.");
     }
     return { session, txnStarted };
   } catch (err) {
-    console.error("Failed to start Mongo session:", err && err.message);
+    console.error("Failed to start Mongo session:", err);
     return { session: null, txnStarted: false };
   }
 }
 
-// Helper: validate ObjectId
-function isValidObjectId(id) {
-  return mongoose.Types.ObjectId.isValid(id);
-}
-
-/**
- * POST /api/books/:bookId/reserve
- */
-router.post("/:bookId/reserve", authenticate, async (req, res) => {
+/* ---------------------------------------------------------
+   🟢 POST /api/reservation/:bookId
+   Reserve a book
+--------------------------------------------------------- */
+router.post("/:bookId", authenticate, async (req, res) => {
   const student = req.user;
-  const bookId = req.params.bookId;
+  const { bookId } = req.params;
 
   if (!isValidObjectId(bookId)) {
     return res.status(400).json({ success: false, error: "Invalid bookId" });
   }
 
-  // cooldown check
   if (student.cooldownUntil && student.cooldownUntil > new Date()) {
     const diffMs = student.cooldownUntil - new Date();
     return res.status(403).json({
@@ -67,270 +66,106 @@ router.post("/:bookId/reserve", authenticate, async (req, res) => {
 
   const { session, txnStarted } = await startSessionWithTxn();
   try {
-    // fetch student doc inside session
-    const studentQuery = Student.findById(student._id);
-    if (session) studentQuery.session(session);
-    const studentDoc = await studentQuery.exec();
+    const studentDoc = await Student.findById(student._id).session(session);
+    if (!studentDoc)
+      throw new Error("Student not found");
 
-    if (!studentDoc) {
-      if (txnStarted) await session.abortTransaction();
-      if (session) session.endSession();
-      return res.status(404).json({ success: false, error: "Student not found" });
-    }
+    if ((studentDoc.activeReservations || 0) >= MAX_ACTIVE_RESERVATIONS)
+      throw new Error("You already have an active reservation");
 
-    if ((studentDoc.activeReservations || 0) >= MAX_ACTIVE_RESERVATIONS) {
-      if (txnStarted) await session.abortTransaction();
-      if (session) session.endSession();
-      return res.status(403).json({ success: false, error: "You already have an active reservation" });
-    }
-
-    // decrement book availability atomically
-    const bookQuery = Book.findOneAndUpdate(
+    const book = await Book.findOneAndUpdate(
       { _id: bookId, availableCount: { $gt: 0 } },
       { $inc: { availableCount: -1, reservedCount: 1 } },
-      { new: true }
+      { new: true, session }
     );
-    if (session) bookQuery.session(session);
-    const book = await bookQuery.exec();
-    if (!book) {
-      if (txnStarted) await session.abortTransaction();
-      if (session) session.endSession();
-      return res.status(400).json({ success: false, error: "No available copies" });
-    }
 
-    // create reservation
+    if (!book)
+      throw new Error("No available copies");
+
     const reservationDoc = {
       bookId,
       studentId: studentDoc._id,
       reservedAt: new Date(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      status: "reserved",
     };
-    const created = await Reservation.create([reservationDoc], session ? { session } : {});
-    const reservation = Array.isArray(created) ? created[0] : created;
+
+    const [reservation] = await Reservation.create([reservationDoc], { session });
 
     studentDoc.activeReservations = (studentDoc.activeReservations || 0) + 1;
-    if (session) await studentDoc.save({ session }); else await studentDoc.save();
+    await studentDoc.save({ session });
 
     if (txnStarted) await session.commitTransaction();
-    if (session) session.endSession();
+    session.endSession();
 
     res.status(201).json({ success: true, reservation });
   } catch (err) {
     if (txnStarted) await session.abortTransaction();
     if (session) session.endSession();
     console.error("Reserve error:", err);
-    const msg = err?.message || "Reservation failed";
-    let status = 500;
-    if (/No available copies/i.test(msg)) status = 400;
-    else if (/active reservation/i.test(msg) || /already have an active reservation/i.test(msg)) status = 403;
-    res.status(status).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err.message || "Reservation failed" });
   }
 });
 
-/**
- * GET /api/students/:studentId/reservations
- */
-router.get("/students/:studentId/reservations", authenticate, async (req, res) => {
-  const sid = req.params.studentId;
-  if (!isValidObjectId(sid)) return res.status(400).json({ success: false, error: "Invalid studentId" });
-
-  if (!req.user.isAdmin && req.user._id.toString() !== sid) {
-    return res.status(403).json({ success: false, error: "Forbidden" });
-  }
-
+/* ---------------------------------------------------------
+   🟡 GET /api/reservation/my
+   Get user’s reservations
+--------------------------------------------------------- */
+router.get("/my", authenticate, async (req, res) => {
   try {
-    const reservations = await Reservation.find({ studentId: sid }).populate("bookId").sort({ reservedAt: -1 });
+    const reservations = await Reservation.find({ studentId: req.user._id })
+      .populate("bookId")
+      .sort({ reservedAt: -1 });
     res.json({ success: true, reservations });
   } catch (err) {
-    console.error("Failed to list reservations for student", sid, err);
     res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
 
-/**
- * GET /api/reservations/:id
- */
-router.get("/:id", authenticate, async (req, res) => {
-  const rid = req.params.id;
-  if (!isValidObjectId(rid)) return res.status(400).json({ success: false, error: "Invalid reservation id" });
-
-  try {
-    const reservation = await Reservation.findById(rid).populate("bookId studentId");
-    if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
-    if (!req.user.isAdmin && reservation.studentId._id.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, error: "Forbidden" });
-    }
-    res.json({ success: true, reservation });
-  } catch (err) {
-    console.error("Failed to get reservation", rid, err);
-    res.status(500).json({ success: false, error: "Failed to fetch reservation" });
-  }
-});
-
-/**
- * DELETE /api/reservations/:id
- */
+/* ---------------------------------------------------------
+   🔴 DELETE /api/reservation/:id
+   Cancel reservation
+--------------------------------------------------------- */
 router.delete("/:id", authenticate, async (req, res) => {
-  const rid = req.params.id;
-  if (!isValidObjectId(rid)) return res.status(400).json({ success: false, error: "Invalid reservation id" });
+  const { id } = req.params;
+  if (!isValidObjectId(id))
+    return res.status(400).json({ success: false, error: "Invalid reservation id" });
 
   const { session, txnStarted } = await startSessionWithTxn();
   try {
-    const reservationQuery = Reservation.findById(rid);
-    if (session) reservationQuery.session(session);
-    const reservation = await reservationQuery.exec();
+    const reservation = await Reservation.findById(id).session(session);
     if (!reservation) throw new Error("Reservation not found");
 
-    if (!req.user.isAdmin && reservation.studentId.toString() !== req.user._id.toString()) {
-      throw new Error("Not authorized to cancel this reservation");
-    }
+    if (reservation.studentId.toString() !== req.user._id.toString())
+      throw new Error("Not authorized");
 
-    if (reservation.status === "reserved") {
-      const bookQuery = Book.findByIdAndUpdate(reservation.bookId, { $inc: { availableCount: 1, reservedCount: -1 } });
-      if (session) bookQuery.session(session);
-      await bookQuery.exec();
+    if (reservation.status !== "reserved")
+      throw new Error("Reservation already expired or cancelled");
 
-      const studentQuery = Student.findById(reservation.studentId);
-      if (session) studentQuery.session(session);
-      const student = await studentQuery.exec();
-      if (student) {
-        student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
-        if (session) await student.save({ session }); else await student.save();
-      } else {
-        console.warn("Student missing while cancelling reservation:", reservation.studentId);
-      }
-    }
+    await Book.findByIdAndUpdate(
+      reservation.bookId,
+      { $inc: { availableCount: 1, reservedCount: -1 } },
+      { session }
+    );
+
+    await Student.findByIdAndUpdate(
+      reservation.studentId,
+      { $inc: { activeReservations: -1 } },
+      { session }
+    );
 
     reservation.status = "cancelled";
-    if (session) await reservation.save({ session }); else await reservation.save();
+    await reservation.save({ session });
 
     if (txnStarted) await session.commitTransaction();
-    if (session) session.endSession();
+    session.endSession();
 
     res.json({ success: true, message: "Reservation cancelled" });
   } catch (err) {
     if (txnStarted) await session.abortTransaction();
     if (session) session.endSession();
-    console.error("Failed to cancel reservation", rid, err);
-    const msg = err?.message || "Failed to cancel reservation";
-    let status = 400;
-    if (/not found/i.test(msg)) status = 404;
-    else if (/not authorized/i.test(msg)) status = 403;
-    res.status(status).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err.message || "Failed to cancel reservation" });
   }
 });
-
-/**
- * PUT /api/reservations/:id/mark-borrowed
- */
-router.put("/:id/mark-borrowed", authenticate, isAdmin, async (req, res) => {
-  const rid = req.params.id;
-  if (!isValidObjectId(rid)) return res.status(400).json({ success: false, error: "Invalid reservation id" });
-
-  const { session, txnStarted } = await startSessionWithTxn();
-  try {
-    const reservationQuery = Reservation.findById(rid);
-    if (session) reservationQuery.session(session);
-    const reservation = await reservationQuery.exec();
-    if (!reservation) throw new Error("Reservation not found");
-    if (reservation.status !== "reserved") throw new Error("Reservation cannot be marked borrowed");
-
-    reservation.status = "borrowed";
-    reservation.pickedUpAt = new Date();
-    if (session) await reservation.save({ session }); else await reservation.save();
-
-    const bookQuery = Book.findByIdAndUpdate(reservation.bookId, { $inc: { borrowedCount: 1, reservedCount: -1 } });
-    if (session) bookQuery.session(session);
-    await bookQuery.exec();
-
-    const studentQuery = Student.findById(reservation.studentId);
-    if (session) studentQuery.session(session);
-    const student = await studentQuery.exec();
-    if (student) {
-      student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
-      if (session) await student.save({ session }); else await student.save();
-    }
-
-    if (txnStarted) await session.commitTransaction();
-    if (session) session.endSession();
-
-    res.json({ success: true, reservation });
-  } catch (err) {
-    if (txnStarted) await session.abortTransaction();
-    if (session) session.endSession();
-    console.error("Failed to mark reservation borrowed", rid, err);
-    const msg = err?.message || "Failed to mark borrowed";
-    let status = 400;
-    if (/not found/i.test(msg)) status = 404;
-    else if (/not authorized/i.test(msg)) status = 403;
-    else if (/cannot be marked borrowed/i.test(msg)) status = 400;
-    else status = 500;
-    res.status(status).json({ success: false, error: msg });
-  }
-});
-
-/**
- * Expiry job
- */
-async function expireReservationsBatch(limit = 100) {
-  const now = new Date();
-  const expired = await Reservation.find({ status: "reserved", expiresAt: { $lte: now } })
-    .sort({ expiresAt: 1 })
-    .limit(limit)
-    .exec();
-  if (!expired || expired.length === 0) return 0;
-
-  for (const r of expired) {
-    const { session, txnStarted } = await startSessionWithTxn();
-    try {
-      const opts = session ? { session } : {};
-      await Reservation.findByIdAndUpdate(r._id, { status: "expired" }, opts);
-      await Book.findByIdAndUpdate(r.bookId, { $inc: { availableCount: 1, reservedCount: -1 } }, opts);
-
-      const studentQuery = Student.findById(r.studentId);
-      if (session) studentQuery.session(session);
-      const student = await studentQuery.exec();
-      if (!student) {
-        // Student missing — log and continue (ensure we don't crash the batch)
-        console.warn("Student for reservation not found:", r.studentId, "reservation:", r._id);
-      } else {
-        const failedAttempts = (student.failedReservationAttempts || 0) + 1;
-        student.failedReservationAttempts = failedAttempts;
-        student.cooldownUntil = computeCooldown(failedAttempts);
-        student.activeReservations = Math.max((student.activeReservations || 1) - 1, 0);
-        if (session) await student.save({ session }); else await student.save();
-      }
-
-      if (txnStarted) await session.commitTransaction();
-    } catch (err) {
-      if (txnStarted) await session.abortTransaction();
-      console.error("Failed to expire reservation", r._id, err);
-    } finally {
-      if (session) session.endSession();
-    }
-  }
-
-  return expired.length;
-}
-
-// Self-scheduling loop
-let expireJobRunning = false;
-async function expireReservationsLoop() {
-  if (expireJobRunning) return;
-  expireJobRunning = true;
-  try {
-    let processed;
-    do {
-      processed = await expireReservationsBatch(100);
-      if (processed > 0) await new Promise((r) => setTimeout(r, 200));
-    } while (processed > 0);
-  } catch (err) {
-    console.error("expireReservationsLoop failed", err);
-  } finally {
-    expireJobRunning = false;
-    setTimeout(expireReservationsLoop, 30 * 1000);
-  }
-}
-setImmediate(expireReservationsLoop);
 
 module.exports = router;
