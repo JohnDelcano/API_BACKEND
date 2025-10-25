@@ -172,7 +172,7 @@ router.post("/register", async (req, res) => {
     }
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !password || !validPicture) {
+    if (!firstName || !lastName || !email || !password || !profilePicture) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
