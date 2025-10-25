@@ -1,6 +1,6 @@
 // src/middleware/auth.js
 import jwt from "jsonwebtoken";
-import Student from "../models/Student.js"; // adjust relative path if needed
+import Student from "./models/Student.js"; // adjust relative path if needed
 
 export async function authenticate(req, res, next) {
   try {
