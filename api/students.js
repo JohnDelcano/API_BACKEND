@@ -164,7 +164,6 @@ router.post("/register", async (req, res) => {
       genre,
       grade,
       profilePicture,
-      validIDs 
     } = req.body;
 
     const { validIDs } = req.body;
