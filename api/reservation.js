@@ -282,5 +282,28 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
+// PATCH /api/reservation/:id/status
+router.patch("/:id/status", async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // "approved" or "declined"
+
+  if (!["approved", "declined"].includes(status.toLowerCase()))
+    return res.status(400).json({ success: false, error: "Invalid status" });
+
+  try {
+    const reservation = await Reservation.findById(id);
+    if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
+
+    reservation.status = status.toLowerCase();
+    await reservation.save();
+
+    res.json({ success: true, message: `Reservation ${status}`, reservation });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to update status" });
+  }
+});
+
+
 
 export default router;
