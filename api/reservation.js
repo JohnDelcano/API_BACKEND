@@ -119,6 +119,21 @@ router.post("/:bookId", authenticate, async (req, res) => {
   }
 });
 
+
+// GET /reservation/my
+router.get("/my", authenticate, async (req, res) => {
+  try {
+    const reservations = await Reservation.find({ studentId: req.user._id })
+      .populate("bookId"); // populate book details
+
+    res.json({ reservations });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to fetch your reservations" });
+  }
+});
+
+
 /* -----------------------------
    DELETE /:id (cancel reservation)
 ----------------------------- */
