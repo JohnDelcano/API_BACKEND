@@ -226,4 +226,17 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
+// GET /api/reservation/my
+router.get("/my", authenticate, async (req, res) => {
+  try {
+    const studentId = req.user._id;
+    const reservations = await Reservation.find({ studentId }).populate("bookId");
+    res.json({ success: true, reservations });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to fetch reservations" });
+  }
+});
+
+
 export default router;
