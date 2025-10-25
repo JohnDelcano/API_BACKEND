@@ -101,6 +101,9 @@ router.post("/", upload.single("picture"), async (req, res) => {
       author,
       quantity,
       quality,
+      availableCount: quantity,
+      reservedCount: 0,
+      borrowedCount: 0,
       genre: normalizedGenre,
       picture: pictureUrl,
       favoritesCount: 0,
@@ -141,6 +144,11 @@ router.put("/:id", upload.single("picture"), async (req, res) => {
       update.genre = Array.isArray(genre)
         ? genre.map(g => g.trim().toLowerCase())
         : genre.trim().toLowerCase();
+    }
+
+    if (quantity) {
+      const diff = quantity - book.quantity; // difference from old quantity
+      update.availableCount = (book.availableCount || 0) + diff;
     }
 
     if (pictureUrl) update.picture = pictureUrl;
