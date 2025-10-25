@@ -254,27 +254,24 @@ router.get("/all", async (req, res) => {
 });
 
 // ---------------------------
-// GET all reservations (admin view) with student info and actions
+// GET all reservations (admin view)
 router.get("/admin/all", async (req, res) => {
   try {
-    // fetch all reservations, populate book & student
     const reservations = await Reservation.find()
-      .populate({ path: "bookId", select: "title" })       // book title
-      .populate({ path: "studentId", select: "name libraryId" }) // student name + library ID
+      .populate({ path: "bookId", select: "title" }) // book name
+      .populate({ path: "studentId", select: "studentId firstName lastName" }) // student info
       .sort({ reservedAt: -1 });
 
-    // format for frontend
     const formatted = reservations.map(r => ({
       _id: r._id,
-      studentId: r.studentId?._id || "N/A",          // internal student ID
-      studentLibraryId: r.studentId?.libraryId || "N/A",
-      studentName: r.studentId?.name || "Unknown",
-      bookId: r.bookId?._id || "N/A",
-      bookTitle: r.bookId?.title || "Unknown",
+      studentId: r.studentId?.studentId || "N/A",
+      studentName: r.studentId
+        ? `${r.studentId.firstName} ${r.studentId.lastName}`
+        : "Unknown",
+      bookName: r.bookId?.title || "Unknown",
       reservedAt: r.reservedAt,
       dueDate: r.expiresAt,
       status: r.status,
-      actions: r.status === "reserved" ? ["approve", "decline"] : [], // frontend can render buttons
     }));
 
     res.json({ success: true, reservations: formatted });
@@ -283,6 +280,7 @@ router.get("/admin/all", async (req, res) => {
     res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
+
 
 
 // PATCH /api/reservation/:id/status
