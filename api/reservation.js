@@ -125,9 +125,12 @@ router.post("/:bookId", authenticate, async (req, res) => {
     } finally {
       session.endSession();
     }
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message || "Reservation failed" });
-  }
+  } catch (err: any) {
+  console.error("Reserve error response:", err.response?.data);
+  const msg = err.response?.data?.error || err.response?.data?.message;
+  Alert.alert("Error", msg || "Reservation failed");
+}
+
 });
 
 /* -----------------------------
