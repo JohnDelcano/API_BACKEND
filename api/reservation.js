@@ -8,14 +8,10 @@ import { authenticate } from "../auth.js";
 const router = express.Router();
 
 // Constants
-const MAX_ACTIVE_RESERVATIONS = 1;
-const COOLDOWN_MINUTES = 10;
-const RESERVATION_EXPIRY_HOURS = 1;
+const MAX_ACTIVE_RESERVATIONS = 3; // Increased to 3
+const RESERVATION_EXPIRY_HOURS = 1; // 1 hour for pickup
 
-// Compute cooldown timestamp
-const computeCooldown = () => new Date(Date.now() + COOLDOWN_MINUTES * 60 * 1000);
-
-// ObjectId validation
+// Validate ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 // Start session with optional transaction
@@ -32,7 +28,7 @@ async function startSessionWithTxn() {
 }
 
 /* -----------------------------
-   Expire old reservations and broadcast updates
+   Expire old reservations
 ----------------------------- */
 async function expireOldReservations(io) {
   const now = new Date();
@@ -47,12 +43,10 @@ async function expireOldReservations(io) {
     });
     const studentDoc = await Student.findByIdAndUpdate(resv.studentId, {
       $inc: { activeReservations: -1 },
-      $set: { cooldownUntil: computeCooldown() },
     }, { new: true });
     resv.status = "expired";
     await resv.save();
 
-    // Broadcast expiration
     io.emit("reservationUpdated", {
       ...resv.toObject(),
       student: studentDoc,
@@ -74,17 +68,6 @@ router.post("/:bookId", authenticate, async (req, res) => {
   try {
     await expireOldReservations(io);
 
-    // Check cooldown
-    if (student.cooldownUntil && student.cooldownUntil > new Date()) {
-      const remainingMs = student.cooldownUntil - new Date();
-      return res.status(403).json({
-        success: false,
-        error: "Cooldown active. Please wait before reserving again.",
-        cooldownUntil: student.cooldownUntil,
-        remainingSeconds: Math.ceil(remainingMs / 1000),
-      });
-    }
-
     const { session, txnStarted } = await startSessionWithTxn();
 
     try {
@@ -92,7 +75,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
       if (!studentDoc) throw new Error("Student not found");
 
       if ((studentDoc.activeReservations || 0) >= MAX_ACTIVE_RESERVATIONS)
-        throw new Error("You already have an active reservation");
+        throw new Error(`You can only reserve up to ${MAX_ACTIVE_RESERVATIONS} books`);
 
       const book = await Book.findOneAndUpdate(
         { _id: bookId, availableCount: { $gt: 0 } },
@@ -105,15 +88,13 @@ router.post("/:bookId", authenticate, async (req, res) => {
       const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
 
       const [reservation] = await Reservation.create(
-        [
-          {
-            bookId,
-            studentId: studentDoc._id,
-            reservedAt: new Date(),
-            expiresAt,
-            status: "reserved",
-          },
-        ],
+        [{
+          bookId,
+          studentId: studentDoc._id,
+          reservedAt: new Date(),
+          expiresAt,
+          status: "reserved",
+        }],
         { session }
       );
 
@@ -122,12 +103,11 @@ router.post("/:bookId", authenticate, async (req, res) => {
 
       if (txnStarted) await session.commitTransaction();
 
-      // Broadcast new reservation
       io.emit("reservationUpdated", { ...reservation.toObject(), student: studentDoc });
 
       res.status(201).json({
         success: true,
-        message: "Book reserved successfully.",
+        message: "Book reserved successfully",
         reservation,
         student: studentDoc,
       });
@@ -158,33 +138,31 @@ router.delete("/:id", authenticate, async (req, res) => {
       if (reservation.studentId.toString() !== req.user._id.toString())
         throw new Error("Not authorized");
       if (reservation.status !== "reserved")
-        throw new Error("Reservation already expired or cancelled");
+        throw new Error("Reservation cannot be cancelled");
 
+      // Restore book counts
       await Book.findByIdAndUpdate(
         reservation.bookId,
         { $inc: { availableCount: 1, reservedCount: -1 } },
         { session }
       );
 
+      // Update student
       const studentDoc = await Student.findByIdAndUpdate(
         reservation.studentId,
         { $inc: { activeReservations: -1 } },
         { new: true, session }
       );
 
+      // Cancel reservation
       reservation.status = "cancelled";
       await reservation.save({ session });
 
       if (txnStarted) await session.commitTransaction();
 
-      // Broadcast cancellation
       io.emit("reservationUpdated", { ...reservation.toObject(), student: studentDoc });
 
-      res.json({
-        success: true,
-        message: "Reservation cancelled",
-        student: studentDoc,
-      });
+      res.json({ success: true, message: "Reservation cancelled", student: studentDoc });
     } finally {
       session.endSession();
     }
@@ -199,24 +177,23 @@ router.delete("/:id", authenticate, async (req, res) => {
 ----------------------------- */
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body; // "approved" | "declined"
+  const { status } = req.body;
   const io = req.app.get("io");
 
   try {
-    const reservation = await Reservation.findById(id).populate("student");
+    const reservation = await Reservation.findById(id).populate("studentId");
     if (!reservation) return res.status(404).json({ success: false, message: "Reservation not found" });
 
     reservation.status = status;
 
     if (status === "approved") {
       reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-      reservation.student.activeReservations = Math.max(reservation.student.activeReservations, 0);
-      await reservation.student.save();
+      reservation.studentId.activeReservations = Math.max(reservation.studentId.activeReservations, 0);
+      await reservation.studentId.save();
     }
 
     await reservation.save();
 
-    // Broadcast status update
     io.emit("reservationUpdated", reservation);
 
     res.json({ success: true, reservation });
@@ -226,17 +203,17 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
-// GET /api/reservation/my
+/* -----------------------------
+   GET /my (get my reservations)
+----------------------------- */
 router.get("/my", authenticate, async (req, res) => {
   try {
-    const studentId = req.user._id;
-    const reservations = await Reservation.find({ studentId }).populate("bookId");
+    const reservations = await Reservation.find({ studentId: req.user._id }).populate("bookId");
     res.json({ success: true, reservations });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Failed to fetch reservations" });
   }
 });
-
 
 export default router;
