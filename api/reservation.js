@@ -213,4 +213,59 @@ router.delete("/:id", authenticate, async (req, res) => {
   }
 });
 
+// GET /api/reservation/all
+router.get("/all", authenticate, async (req, res) => {
+  try {
+    // Optionally, you can check if req.user.isAdmin
+    const reservations = await Reservation.find()
+      .populate("studentId", "firstName lastName studentId") // select needed fields
+      .populate("bookId", "title")
+      .sort({ reservedAt: -1 });
+
+    const formatted = reservations.map(r => ({
+      _id: r._id,
+      studentId: r.studentId.studentId,
+      studentName: `${r.studentId.firstName} ${r.studentId.lastName}`,
+      bookName: r.bookId.title,
+      reservedAt: r.reservedAt,
+      dueDate: r.dueDate, // may be undefined until approved
+      status: r.status,
+    }));
+
+    res.json({ success: true, reservations: formatted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to fetch reservations" });
+  }
+});
+
+// PATCH /api/reservation/:id
+router.patch("/:id", authenticate, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // "Approved" or "Declined"
+
+  if (!["Approved", "Declined"].includes(status))
+    return res.status(400).json({ success: false, error: "Invalid status" });
+
+  try {
+    const reservation = await Reservation.findById(id);
+    if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
+
+    reservation.status = status.toLowerCase(); // store as "approved" or "declined"
+
+    // If approved, set dueDate 3 days after reservedAt
+    if (status === "Approved") {
+      const reservedAt = new Date(reservation.reservedAt);
+      reservation.dueDate = new Date(reservedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+    }
+
+    await reservation.save();
+    res.json({ success: true, reservation });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to update reservation" });
+  }
+});
+
+
 export default router;
