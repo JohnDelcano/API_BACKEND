@@ -213,22 +213,36 @@ router.delete("/:id", authenticate, async (req, res) => {
   }
 });
 
-// GET /api/reservation/all
-router.get("/all", authenticate, async (req, res) => {
+// GET /api/reservation/all?libraryId=xxx
+router.get("/all", async (req, res) => {
   try {
-    // Optionally, you can check if req.user.isAdmin
+    const { libraryId } = req.query; // admin's library/branch
+    if (!libraryId) {
+      return res.status(400).json({ success: false, error: "Missing libraryId" });
+    }
+
     const reservations = await Reservation.find()
-      .populate("studentId", "firstName lastName studentId") // select needed fields
-      .populate("bookId", "title")
+      .populate({
+        path: "bookId",
+        select: "title",
+      })
+      .populate({
+        path: "studentId",
+        select: "name libraryId",
+        match: { libraryId }, // only include students in the same library
+      })
       .sort({ reservedAt: -1 });
 
-    const formatted = reservations.map(r => ({
+    // Filter out any reservations where studentId didn't match
+    const filtered = reservations.filter(r => r.studentId);
+
+    const formatted = filtered.map(r => ({
       _id: r._id,
-      studentId: r.studentId.studentId,
-      studentName: `${r.studentId.firstName} ${r.studentId.lastName}`,
+      studentId: r.studentId.libraryId,
+      studentName: r.studentId.name,
       bookName: r.bookId.title,
       reservedAt: r.reservedAt,
-      dueDate: r.dueDate, // may be undefined until approved
+      dueDate: r.expiresAt,
       status: r.status,
     }));
 
@@ -239,31 +253,32 @@ router.get("/all", authenticate, async (req, res) => {
   }
 });
 
-// PATCH /api/reservation/:id
-router.patch("/:id", authenticate, async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body; // "Approved" or "Declined"
-
-  if (!["Approved", "Declined"].includes(status))
-    return res.status(400).json({ success: false, error: "Invalid status" });
-
+// ---------------------------
+// GET all reservations (admin view)
+// ---------------------------
+router.get("/all", async (req, res) => {
   try {
-    const reservation = await Reservation.findById(id);
-    if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
+    // fetch all reservations, populate book & student
+    const reservations = await Reservation.find()
+      .populate({ path: "bookId", select: "title" })       // get book title
+      .populate({ path: "studentId", select: "name libraryId" }) // get student name + ID
+      .sort({ reservedAt: -1 });
 
-    reservation.status = status.toLowerCase(); // store as "approved" or "declined"
+    // format for frontend
+    const formatted = reservations.map(r => ({
+      _id: r._id,
+      studentId: r.studentId?.libraryId || "N/A",
+      studentName: r.studentId?.name || "Unknown",
+      bookName: r.bookId?.title || "Unknown",
+      reservedAt: r.reservedAt,
+      dueDate: r.expiresAt,
+      status: r.status,
+    }));
 
-    // If approved, set dueDate 3 days after reservedAt
-    if (status === "Approved") {
-      const reservedAt = new Date(reservation.reservedAt);
-      reservation.dueDate = new Date(reservedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
-    }
-
-    await reservation.save();
-    res.json({ success: true, reservation });
+    res.json({ success: true, reservations: formatted });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: "Failed to update reservation" });
+    res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
 
