@@ -17,7 +17,7 @@ const reservationSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["reserved", "borrowed", "expired", "cancelled"],
+      enum: ["reserved", "borrowed", "expired", "cancelled", "approved", "declined"],
       default: "reserved",
     },
     reservedAt: {

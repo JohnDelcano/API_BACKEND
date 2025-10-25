@@ -254,25 +254,27 @@ router.get("/all", async (req, res) => {
 });
 
 // ---------------------------
-// GET all reservations (admin view)
-// ---------------------------
+// GET all reservations (admin view) with student info and actions
 router.get("/admin/all", async (req, res) => {
   try {
     // fetch all reservations, populate book & student
     const reservations = await Reservation.find()
-      .populate({ path: "bookId", select: "title" })       // get book title
-      .populate({ path: "studentId", select: "name libraryId" }) // get student name + ID
+      .populate({ path: "bookId", select: "title" })       // book title
+      .populate({ path: "studentId", select: "name libraryId" }) // student name + library ID
       .sort({ reservedAt: -1 });
 
     // format for frontend
     const formatted = reservations.map(r => ({
       _id: r._id,
-      studentId: r.studentId?.libraryId || "N/A",
+      studentId: r.studentId?._id || "N/A",          // internal student ID
+      studentLibraryId: r.studentId?.libraryId || "N/A",
       studentName: r.studentId?.name || "Unknown",
-      bookName: r.bookId?.title || "Unknown",
+      bookId: r.bookId?._id || "N/A",
+      bookTitle: r.bookId?.title || "Unknown",
       reservedAt: r.reservedAt,
       dueDate: r.expiresAt,
       status: r.status,
+      actions: r.status === "reserved" ? ["approve", "decline"] : [], // frontend can render buttons
     }));
 
     res.json({ success: true, reservations: formatted });
@@ -281,6 +283,7 @@ router.get("/admin/all", async (req, res) => {
     res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
+
 
 // PATCH /api/reservation/:id/status
 router.patch("/:id/status", async (req, res) => {
@@ -291,18 +294,53 @@ router.patch("/:id/status", async (req, res) => {
     return res.status(400).json({ success: false, error: "Invalid status" });
 
   try {
-    const reservation = await Reservation.findById(id);
+    const reservation = await Reservation.findById(id)
+      .populate("bookId")
+      .populate("studentId");
+
     if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
 
+    const oldStatus = reservation.status;
     reservation.status = status.toLowerCase();
     await reservation.save();
 
-    res.json({ success: true, message: `Reservation ${status}`, reservation });
+    // If approved, increment borrowedCount and decrement availableCount
+    if (status.toLowerCase() === "approved" && oldStatus === "reserved") {
+      await Book.findByIdAndUpdate(reservation.bookId._id, {
+        $inc: { borrowedCount: 1, reservedCount: -1 }
+      });
+
+    // If declined, release the book
+    } else if (status.toLowerCase() === "declined" && oldStatus === "reserved") {
+      await Book.findByIdAndUpdate(reservation.bookId._id, {
+        $inc: { availableCount: 1, reservedCount: -1 }
+      });
+      await Student.findByIdAndUpdate(reservation.studentId._id, {
+        $inc: { activeReservations: -1 }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Reservation ${status}`,
+      reservation: {
+        _id: reservation._id,
+        studentId: reservation.studentId._id,
+        studentLibraryId: reservation.studentId.libraryId,
+        studentName: reservation.studentId.name,
+        bookId: reservation.bookId._id,
+        bookTitle: reservation.bookId.title,
+        reservedAt: reservation.reservedAt,
+        dueDate: reservation.expiresAt,
+        status: reservation.status,
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: "Failed to update status" });
   }
 });
+
 
 
 
