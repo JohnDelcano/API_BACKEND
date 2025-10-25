@@ -256,7 +256,7 @@ router.get("/all", async (req, res) => {
 // ---------------------------
 // GET all reservations (admin view)
 // ---------------------------
-router.get("/all", async (req, res) => {
+router.get("/admin/all", async (req, res) => {
   try {
     // fetch all reservations, populate book & student
     const reservations = await Reservation.find()
