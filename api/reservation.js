@@ -229,20 +229,25 @@ router.get("/admin/all", async (req, res) => {
 
     // Map to frontend-friendly format
     const formatted = reservations.map(r => ({
-      _id: r._id,
-      student: {
+  _id: r._id,
+  student: r.studentId
+    ? {
         _id: r.studentId._id,
         firstName: r.studentId.firstName,
         lastName: r.studentId.lastName,
-      },
-      book: {
+      }
+    : { _id: null, firstName: "Deleted", lastName: "" },
+  book: r.bookId
+    ? {
         _id: r.bookId._id,
         title: r.bookId.title,
-      },
-      reservedAt: r.reservedAt,
-      dueDate: r.dueDate,    // add dueDate if you set it on approval
-      status: r.status,
-    }));
+      }
+    : { _id: null, title: "Deleted" },
+  reservedAt: r.reservedAt,
+  dueDate: r.dueDate,
+  status: r.status,
+}));
+
 
     res.json({ success: true, reservations: formatted });
   } catch (err) {
