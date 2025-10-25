@@ -219,9 +219,31 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
-/* -----------------------------
-   GET /my (get my reservations)
------------------------------ */
+
+router.get("/admin/all", authenticate, async (req, res) => {
+  try {
+    const reservations = await Reservation.find()
+      .populate("studentId", "name")   // populate student name
+      .populate("bookId");             // populate full book object
+
+    const formatted = reservations.map(r => ({
+      _id: r._id,
+      studentId: r.studentId._id,
+      studentName: r.studentId.name,      // from populated student
+      bookId: r.bookId,                   // full book object
+      bookName: r.bookId.title,           // also keep title for convenience
+      reservedAt: r.reservedAt,
+      dueDate: r.dueDate,
+      status: r.status,
+    }));
+
+    res.json({ success: true, reservations: formatted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to fetch reservations" });
+  }
+});
+
 router.get("/my", authenticate, async (req, res) => {
   try {
     const reservations = await Reservation.find({ studentId: req.user._id }).populate("bookId");
