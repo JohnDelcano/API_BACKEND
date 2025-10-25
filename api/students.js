@@ -164,8 +164,13 @@ router.post("/register", async (req, res) => {
       genre,
       grade,
       profilePicture,
-      validPicture
+      validIDs 
     } = req.body;
+
+    const { validIDs } = req.body;
+    if (!validIDs || validIDs.length < 2) {
+      return res.status(400).json({ success: false, message: "2 valid ID pictures required" });
+    }
 
     // Validate required fields
     if (!firstName || !lastName || !email || !password || !validPicture) {
@@ -210,7 +215,7 @@ router.post("/register", async (req, res) => {
       email: emailLower,
       password: hash,
       profilePicture,
-      validPicture,
+      validIDs,
       birthday: birthdayDate,
       phone: phone ? Number(phone) : undefined,
       address,
