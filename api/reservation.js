@@ -283,61 +283,25 @@ router.get("/admin/all", async (req, res) => {
 
 
 
-// PATCH /api/reservation/:id/status
 router.patch("/:id/status", async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body; // "approved" or "declined"
-
-  if (!["approved", "declined"].includes(status.toLowerCase()))
-    return res.status(400).json({ success: false, error: "Invalid status" });
-
   try {
-    const reservation = await Reservation.findById(id)
-      .populate("bookId")
-      .populate("studentId");
+    const { status } = req.body;
+    const reservation = await Reservation.findById(req.params.id);
+    if (!reservation) return res.status(404).json({ success: false, message: "Reservation not found" });
 
-    if (!reservation) return res.status(404).json({ success: false, error: "Reservation not found" });
-
-    const oldStatus = reservation.status;
-    reservation.status = status.toLowerCase();
+    reservation.status = status;
     await reservation.save();
 
-    // If approved, increment borrowedCount and decrement availableCount
-    if (status.toLowerCase() === "approved" && oldStatus === "reserved") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, {
-        $inc: { borrowedCount: 1, reservedCount: -1 }
-      });
+    // Emit event for all connected admins
+    const io = req.app.get("io");
+    io.emit("reservationUpdated", reservation);
 
-    // If declined, release the book
-    } else if (status.toLowerCase() === "declined" && oldStatus === "reserved") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, {
-        $inc: { availableCount: 1, reservedCount: -1 }
-      });
-      await Student.findByIdAndUpdate(reservation.studentId._id, {
-        $inc: { activeReservations: -1 }
-      });
-    }
-
-    res.json({
-      success: true,
-      message: `Reservation ${status}`,
-      reservation: {
-        _id: reservation._id,
-        studentId: reservation.studentId._id,
-        studentLibraryId: reservation.studentId.libraryId,
-        studentName: reservation.studentId.name,
-        bookId: reservation.bookId._id,
-        bookTitle: reservation.bookId.title,
-        reservedAt: reservation.reservedAt,
-        dueDate: reservation.expiresAt,
-        status: reservation.status,
-      }
-    });
+    res.json({ success: true, message: "Status updated", reservation });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: "Failed to update status" });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 
 

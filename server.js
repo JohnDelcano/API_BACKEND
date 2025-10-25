@@ -2,6 +2,8 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
+import { Server } from "socket.io";
 
 import bookRoutes from "./api/books.js";
 import announcementRoutes from "./api/announcement.js";
@@ -11,6 +13,11 @@ import reservationRoutes from "./api/reservation.js";
 
 dotenv.config();
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+// Make io accessible in routes
+app.set("io", io);
 
 app.use(cors());
 app.use(express.json());
@@ -38,5 +45,5 @@ app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-const PORT = process.env.PORT || 50000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
