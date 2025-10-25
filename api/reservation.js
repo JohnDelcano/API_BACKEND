@@ -220,20 +220,27 @@ router.patch("/:id/status", async (req, res) => {
 });
 
 
-router.get("/admin/all", authenticate, async (req, res) => {
+// GET /admin/all
+router.get("/admin/all", async (req, res) => {
   try {
     const reservations = await Reservation.find()
-      .populate("studentId", "name")   // populate student name
-      .populate("bookId");             // populate full book object
+      .populate("studentId", "firstName lastName") // populate names
+      .populate("bookId", "title");               // populate book title
 
+    // Map to frontend-friendly format
     const formatted = reservations.map(r => ({
       _id: r._id,
-      studentId: r.studentId._id,
-      studentName: r.studentId.name,      // from populated student
-      bookId: r.bookId,                   // full book object
-      bookName: r.bookId.title,           // also keep title for convenience
+      student: {
+        _id: r.studentId._id,
+        firstName: r.studentId.firstName,
+        lastName: r.studentId.lastName,
+      },
+      book: {
+        _id: r.bookId._id,
+        title: r.bookId.title,
+      },
       reservedAt: r.reservedAt,
-      dueDate: r.dueDate,
+      dueDate: r.dueDate,    // add dueDate if you set it on approval
       status: r.status,
     }));
 
@@ -244,14 +251,5 @@ router.get("/admin/all", authenticate, async (req, res) => {
   }
 });
 
-router.get("/my", authenticate, async (req, res) => {
-  try {
-    const reservations = await Reservation.find({ studentId: req.user._id }).populate("bookId");
-    res.json({ success: true, reservations });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Failed to fetch reservations" });
-  }
-});
 
 export default router;
