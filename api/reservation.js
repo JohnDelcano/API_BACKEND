@@ -4,7 +4,7 @@ import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
 import { authenticate } from "../auth.js";
-import { io } from "../server.js";
+
 
 const router = express.Router();
 
@@ -286,31 +286,32 @@ router.get("/admin/all", async (req, res) => {
 
 router.patch("/:id/status", async (req, res) => {
   try {
+    const { id } = req.params;
     const { status } = req.body;
-    const reservation = await Reservation.findById(req.params.id);
+
+    const reservation = await Reservation.findById(id);
     if (!reservation) return res.status(404).json({ success: false, message: "Reservation not found" });
 
     reservation.status = status;
 
-    // Only calculate due date if approved
+    // If approved, calculate due date (3 days)
     if (status === "approved") {
-      const now = new Date();
-      const dueDate = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // +3 days
-      reservation.dueDate = dueDate.toISOString(); // optional, can store in memory only
+      reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
     } else {
-      reservation.dueDate = null;
+      reservation.dueDate = null; // declined or cancelled
     }
 
     await reservation.save();
 
-    // Emit real-time update to all connected clients
-    io.emit("reservationUpdated", reservation);
+    const io = req.app.get("io"); 
+    io.emit("reservationUpdated", reservation); // send to all connected clients
 
     res.json({ success: true, reservation });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 
 
