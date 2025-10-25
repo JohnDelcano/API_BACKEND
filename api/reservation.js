@@ -126,51 +126,67 @@ router.delete("/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   const io = req.app.get("io");
 
-  if (!isValidObjectId(id))
+  if (!mongoose.Types.ObjectId.isValid(id))
     return res.status(400).json({ success: false, error: "Invalid reservation id" });
 
-  const { session, txnStarted } = await startSessionWithTxn();
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
   try {
-    try {
-      const reservation = await Reservation.findById(id).session(session);
-      if (!reservation) throw new Error("Reservation not found");
-      if (reservation.studentId.toString() !== req.user._id.toString())
-        throw new Error("Not authorized");
-      if (reservation.status !== "reserved")
-        throw new Error("Reservation cannot be cancelled");
-
-      // Restore book counts
-      await Book.findByIdAndUpdate(
-        reservation.bookId,
-        { $inc: { availableCount: 1, reservedCount: -1 } },
-        { session }
-      );
-
-      // Update student
-      const studentDoc = await Student.findByIdAndUpdate(
-        reservation.studentId,
-        { $inc: { activeReservations: -1 } },
-        { new: true, session }
-      );
-
-      // Cancel reservation
-      reservation.status = "cancelled";
-      await reservation.save({ session });
-
-      if (txnStarted) await session.commitTransaction();
-
-      io.emit("reservationUpdated", { ...reservation.toObject(), student: studentDoc });
-
-      res.json({ success: true, message: "Reservation cancelled", student: studentDoc });
-    } finally {
+    const reservation = await Reservation.findById(id).session(session);
+    if (!reservation) {
+      await session.abortTransaction();
       session.endSession();
+      return res.status(404).json({ success: false, error: "Reservation not found" });
     }
+
+    if (reservation.studentId.toString() !== req.user._id.toString()) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({ success: false, error: "Not authorized" });
+    }
+
+    if (reservation.status !== "reserved") {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        error: `Cannot cancel a reservation that is ${reservation.status}`,
+      });
+    }
+
+    // Update book counts
+    await Book.findByIdAndUpdate(
+      reservation.bookId,
+      { $inc: { availableCount: 1, reservedCount: -1 } },
+      { session }
+    );
+
+    // Update student active reservations
+    await Student.findByIdAndUpdate(
+      reservation.studentId,
+      { $inc: { activeReservations: -1 } },
+      { session }
+    );
+
+    reservation.status = "cancelled";
+    await reservation.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // Broadcast cancellation
+    io.emit("reservationUpdated", { ...reservation.toObject() });
+
+    res.json({ success: true, message: "Reservation cancelled" });
   } catch (err) {
-    if (txnStarted) await session.abortTransaction();
-    res.status(400).json({ success: false, error: err.message || "Failed to cancel reservation" });
+    await session.abortTransaction();
+    session.endSession();
+    console.error(err);
+    res.status(500).json({ success: false, error: "Failed to cancel reservation" });
   }
 });
+
 
 /* -----------------------------
    PATCH /:id/status (approve/decline)
