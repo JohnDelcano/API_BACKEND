@@ -53,42 +53,79 @@ router.get("/recommended/genre/:genre", async (req, res) => {
 // FAVORITES
 // ---------------------------
 router.put("/:studentId/favorites/:bookId", async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { studentId, bookId } = req.params;
+
+    const book = await Book.findById(bookId).session(session);
+    if (!book) {
+      await session.abortTransaction();
+      return res.status(404).json({ success: false, message: "Book not found" });
+    }
 
     const student = await Student.findByIdAndUpdate(
       studentId,
       { $addToSet: { favorites: bookId } },
-      { new: true }
+      { new: true, session }
     );
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
 
-    await Book.findByIdAndUpdate(bookId, { $inc: { favoritesCount: 1 } });
+    if (!student) {
+      await session.abortTransaction();
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
 
+    book.favoritesCount += 1;
+    await book.save({ session });
+
+    await session.commitTransaction();
     res.json({ success: true, message: "Book added to favorites", favorites: student.favorites });
   } catch (err) {
+    await session.abortTransaction();
     res.status(500).json({ success: false, message: "Error adding favorite", error: err.message });
+  } finally {
+    session.endSession();
   }
 });
 
 router.delete("/:studentId/favorites/:bookId", async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { studentId, bookId } = req.params;
+
+    const book = await Book.findById(bookId).session(session);
+    if (!book) {
+      await session.abortTransaction();
+      return res.status(404).json({ success: false, message: "Book not found" });
+    }
 
     const student = await Student.findByIdAndUpdate(
       studentId,
       { $pull: { favorites: bookId } },
-      { new: true }
+      { new: true, session }
     );
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
 
-    await Book.findByIdAndUpdate(bookId, { $inc: { favoritesCount: -1 } });
+    if (!student) {
+      await session.abortTransaction();
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
 
+    book.favoritesCount = Math.max(0, book.favoritesCount - 1);
+    await book.save({ session });
+
+    await session.commitTransaction();
     res.json({ success: true, message: "Book removed from favorites", favorites: student.favorites });
   } catch (err) {
+    await session.abortTransaction();
     res.status(500).json({ success: false, message: "Error removing favorite", error: err.message });
+  } finally {
+    session.endSession();
   }
 });
+
 
 router.get("/:studentId/favorites", async (req, res) => {
   const { studentId } = req.params;

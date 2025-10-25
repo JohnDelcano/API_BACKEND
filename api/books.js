@@ -6,7 +6,9 @@ import { CloudinaryStorage } from "multer-storage-cloudinary";
 
 const router = express.Router();
 
-// Configure Cloudinary
+// ---------------------------
+// Cloudinary config
+// ---------------------------
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -37,11 +39,11 @@ router.get("/", async (req, res) => {
 });
 
 // ---------------------------
-// GET recommended books (sorted by favoritesCount)
+// GET recommended books (top favorites)
 // ---------------------------
 router.get("/recommended", async (req, res) => {
   try {
-    const books = await Book.find().sort({ favoritesCount: -1 }).limit(10); // top 10
+    const books = await Book.find().sort({ favoritesCount: -1 }).limit(10);
     res.status(200).json(books);
   } catch (error) {
     res.status(500).json({ message: "Error getting recommended books", error: error.message });
@@ -54,8 +56,8 @@ router.get("/recommended", async (req, res) => {
 router.get("/random", async (req, res) => {
   try {
     const count = await Book.countDocuments();
-    const random = Math.floor(Math.random() * count);
-    const books = await Book.find().skip(random).limit(10); // random 10 books
+    const random = Math.floor(Math.random() * Math.max(count - 10, 0));
+    const books = await Book.find().skip(random).limit(10);
     res.status(200).json(books);
   } catch (error) {
     res.status(500).json({ message: "Error getting random books", error: error.message });
@@ -63,12 +65,17 @@ router.get("/random", async (req, res) => {
 });
 
 // ---------------------------
-// GET books by genre
+// GET books by genre (normalized)
 // ---------------------------
 router.get("/genre/:genre", async (req, res) => {
   try {
-    const { genre } = req.params;
-    const books = await Book.find({ genre });
+    let { genre } = req.params;
+    genre = genre.trim().toLowerCase();
+
+    const books = await Book.find({
+      genre: { $regex: `^${genre}$`, $options: "i" },
+    });
+
     res.status(200).json(books);
   } catch (error) {
     res.status(500).json({ message: "Error getting books by genre", error: error.message });
@@ -80,9 +87,25 @@ router.get("/genre/:genre", async (req, res) => {
 // ---------------------------
 router.post("/", upload.single("picture"), async (req, res) => {
   try {
-    const { book_id, title, author, quantity, quality, genre } = req.body;
+    let { book_id, title, author, quantity, quality, genre } = req.body;
     const pictureUrl = req.file?.path ?? req.body.picture;
-    const newBook = new Book({ book_id, title, author, quantity, quality, genre, picture: pictureUrl, favoritesCount: 0 });
+
+    // Normalize genre
+    const normalizedGenre = Array.isArray(genre)
+      ? genre.map(g => g.trim().toLowerCase())
+      : genre?.trim().toLowerCase();
+
+    const newBook = new Book({
+      book_id,
+      title,
+      author,
+      quantity,
+      quality,
+      genre: normalizedGenre,
+      picture: pictureUrl,
+      favoritesCount: 0,
+    });
+
     await newBook.save();
     res.status(201).json({ message: "Book added successfully!", book: newBook });
   } catch (error) {
@@ -108,10 +131,18 @@ router.delete("/:id", async (req, res) => {
 // ---------------------------
 router.put("/:id", upload.single("picture"), async (req, res) => {
   try {
-    const { book_id, title, author, quantity, quality, genre } = req.body;
+    let { book_id, title, author, quantity, quality, genre } = req.body;
     const pictureUrl = req.file?.path ?? req.body.picture;
 
-    const update = { book_id, title, author, quantity, quality, genre };
+    const update = { book_id, title, author, quantity, quality };
+
+    // Normalize genre if provided
+    if (genre) {
+      update.genre = Array.isArray(genre)
+        ? genre.map(g => g.trim().toLowerCase())
+        : genre.trim().toLowerCase();
+    }
+
     if (pictureUrl) update.picture = pictureUrl;
 
     const updatedBook = await Book.findByIdAndUpdate(req.params.id, update, {
@@ -126,7 +157,9 @@ router.put("/:id", upload.single("picture"), async (req, res) => {
   }
 });
 
+// ---------------------------
 // GET single book by ID
+// ---------------------------
 router.get("/:id", async (req, res) => {
   try {
     const book = await Book.findById(req.params.id);
