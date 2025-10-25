@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
 
 const studentSchema = new mongoose.Schema({
+  studentId: { type: String, required: true, unique: true },
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
   email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true },
+  password: { type: String, required: true, unique: true },
   profilePicture: { type: String, default: "" },
+  validPicture: { type: String, default: ""},
   birthday: { type: Date },
   phone: { type: Number },
   address: { type: String },

@@ -126,40 +126,59 @@ router.post("/register", async (req, res) => {
       gender,
       genre,
       grade,
-      profilePicture
+      profilePicture,
+      validPicture
     } = req.body;
 
-    if (!firstName || !lastName || !email || !password)
+    // Validate required fields
+    if (!firstName || !lastName || !email || !password || !validPicture) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
 
     // Validate phone numbers
     if (phone && isNaN(Number(phone))) {
       return res.status(400).json({ success: false, message: "Phone must be a number" });
     }
+
     if (guardian && isNaN(Number(guardian))) {
       return res.status(400).json({ success: false, message: "Guardian phone must be a number" });
     }
 
+    // heck if email already exists
     const emailLower = email.trim().toLowerCase();
     const existing = await Student.findOne({ email: emailLower });
-    if (existing) return res.status(409).json({ success: false, message: "Email already taken" });
+    if (existing) {
+      return res.status(409).json({ success: false, message: "Email already taken" });
+    }
 
+    // Generate Library ID (format: YYYY-0001)
+    const currentYear = new Date().getFullYear();
+    const count = await Student.countDocuments({
+      studentId: { $regex: `^${currentYear}-` }, // Count only IDs from this year
+    });
+    const studentId = `${currentYear}-${(count + 1).toString().padStart(4, "0")}`;
+
+    // Hash password
     const hash = await bcrypt.hash(password, 10);
 
+    // Parse optional fields
     const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
+    // Create new student
     const student = new Student({
+      studentId,
       firstName,
       lastName,
       email: emailLower,
       password: hash,
       profilePicture,
+      validPicture,
       birthday: birthdayDate,
-      phone: phone ? Number(phone) : undefined,         // <-- convert to number
+      phone: phone ? Number(phone) : undefined,
       address,
       schoolname,
-      guardian: guardian ? Number(guardian) : undefined, // <-- convert to number
+      guardian: guardian ? Number(guardian) : undefined,
       guardianname,
       gender,
       genre: parsedGenre,
@@ -168,21 +187,26 @@ router.post("/register", async (req, res) => {
 
     await student.save();
 
+    // Send response
     res.status(201).json({
       success: true,
-      message: "Student registered",
+      message: "Student registered successfully",
       student: { ...student.toObject(), password: undefined }
     });
+
   } catch (err) {
     console.error("Registration error:", err);
-    res.status(500).json({ success: false, message: "Registration error", error: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Registration error",
+      error: err.message
+    });
   }
 });
 
 
-// ---------------------------
+
 // GOOGLE LOGIN
-// ---------------------------
 router.post("/google", async (req, res) => {
   try {
     const { email, firstName, lastName, profilePicture } = req.body;
@@ -201,21 +225,20 @@ router.post("/google", async (req, res) => {
   }
 });
 
-// ---------------------------
+
 // SIGNIN
-// ---------------------------
 router.post("/signin", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
 
     const student = await Student.findOne({ email: email.trim().toLowerCase() });
-    if (!student) return res.status(401).json({ success: false, message: "Invalid credentials" });
+    if (!student) return res.status(401).json({ success: false, message: "Invalid email" });
 
     const isMatch = await bcrypt.compare(password, student.password);
-    if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials" });
+    if (!isMatch) return res.status(401).json({ success: false, message: "Invalid password" });
 
-    const token = jwt.sign({ id: student._id, email: student.email }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
+    const token = jwt.sign({ id: student._id, email: student.email,  libraryID: student.libraryID }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
 
     res.json({ success: true, message: "Login successful", token, student: { ...student.toObject(), password: undefined } });
   } catch (err) {
@@ -223,9 +246,9 @@ router.post("/signin", async (req, res) => {
   }
 });
 
-// ---------------------------
+
+
 // PROFILE
-// ---------------------------
 router.get("/me", async (req, res) => {
   try {
     const auth = req.headers.authorization;

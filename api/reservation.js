@@ -4,23 +4,22 @@ import mongoose from "mongoose";
 import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
-import { authenticate } from "../auth.js"; // make sure you import your auth middleware
+import { authenticate } from "../auth.js";
 
 const router = express.Router();
 
+// Limits and cooldown constants
 const MAX_ACTIVE_RESERVATIONS = 1;
-const COOLDOWN_MINUTES = [1, 5, 30]; // cooldown backoff
+const COOLDOWN_MINUTES = 10;
+const RESERVATION_EXPIRY_HOURS = 1;
 
-function computeCooldown(attempt) {
-  const mins = COOLDOWN_MINUTES[Math.min(attempt - 1, COOLDOWN_MINUTES.length - 1)];
-  return new Date(Date.now() + mins * 60 * 1000);
-}
+// Compute cooldown timestamp
+const computeCooldown = () => new Date(Date.now() + COOLDOWN_MINUTES * 60 * 1000);
 
-function isValidObjectId(id) {
-  return mongoose.Types.ObjectId.isValid(id);
-}
+// Mongo ObjectId validation
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
-// Utility for safe transactions
+// Start transaction safely
 async function startSessionWithTxn() {
   try {
     const session = await mongoose.startSession();
@@ -28,13 +27,39 @@ async function startSessionWithTxn() {
     try {
       session.startTransaction();
       txnStarted = true;
-    } catch (err) {
+    } catch {
       console.warn("Transactions unavailable — proceeding without transaction.");
     }
     return { session, txnStarted };
   } catch (err) {
     console.error("Failed to start Mongo session:", err);
     return { session: null, txnStarted: false };
+  }
+}
+
+/* ---------------------------------------------------------
+   🔄 Auto-expire reservations (middleware)
+--------------------------------------------------------- */
+async function expireOldReservations() {
+  const now = new Date();
+
+  // Find reservations past expiry but still marked "reserved"
+  const expired = await Reservation.find({
+    status: "reserved",
+    expiresAt: { $lt: now },
+  });
+
+  for (const resv of expired) {
+    await Book.findByIdAndUpdate(resv.bookId, {
+      $inc: { availableCount: 1, reservedCount: -1 },
+    });
+    await Student.findByIdAndUpdate(resv.studentId, {
+      $inc: { activeReservations: -1 },
+      $set: { cooldownUntil: computeCooldown() }, // start 10-min cooldown
+    });
+
+    resv.status = "expired";
+    await resv.save();
   }
 }
 
@@ -50,18 +75,23 @@ router.post("/:bookId", authenticate, async (req, res) => {
     return res.status(400).json({ success: false, error: "Invalid bookId" });
   }
 
-  if (student.cooldownUntil && student.cooldownUntil > new Date()) {
-    const diffMs = student.cooldownUntil - new Date();
-    return res.status(403).json({
-      success: false,
-      error: "Cooldown active",
-      cooldownUntil: student.cooldownUntil,
-      remainingSeconds: Math.ceil(diffMs / 1000),
-    });
-  }
-
-  const { session, txnStarted } = await startSessionWithTxn();
   try {
+    // Expire any old reservations first
+    await expireOldReservations();
+
+    // Check for active cooldown
+    if (student.cooldownUntil && student.cooldownUntil > new Date()) {
+      const remainingMs = student.cooldownUntil - new Date();
+      return res.status(403).json({
+        success: false,
+        error: "Cooldown active. Please wait before reserving again.",
+        cooldownUntil: student.cooldownUntil,
+        remainingSeconds: Math.ceil(remainingMs / 1000),
+      });
+    }
+
+    const { session, txnStarted } = await startSessionWithTxn();
+
     const studentDoc = await Student.findById(student._id).session(session);
     if (!studentDoc) throw new Error("Student not found");
 
@@ -76,15 +106,20 @@ router.post("/:bookId", authenticate, async (req, res) => {
 
     if (!book) throw new Error("No available copies");
 
-    const reservationDoc = {
-      bookId,
-      studentId: studentDoc._id,
-      reservedAt: new Date(),
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour expiry
-      status: "reserved",
-    };
+    const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    const [reservation] = await Reservation.create([reservationDoc], { session });
+    const [reservation] = await Reservation.create(
+      [
+        {
+          bookId,
+          studentId: studentDoc._id,
+          reservedAt: new Date(),
+          expiresAt,
+          status: "reserved",
+        },
+      ],
+      { session }
+    );
 
     studentDoc.activeReservations = (studentDoc.activeReservations || 0) + 1;
     await studentDoc.save({ session });
@@ -92,12 +127,17 @@ router.post("/:bookId", authenticate, async (req, res) => {
     if (txnStarted) await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({ success: true, reservation });
+    res.status(201).json({
+      success: true,
+      message: "Book reserved successfully.",
+      reservation,
+    });
   } catch (err) {
-    if (txnStarted) await session.abortTransaction();
-    if (session) session.endSession();
     console.error("Reserve error:", err);
-    res.status(400).json({ success: false, error: err.message || "Reservation failed" });
+    res.status(400).json({
+      success: false,
+      error: err.message || "Reservation failed",
+    });
   }
 });
 
@@ -107,11 +147,28 @@ router.post("/:bookId", authenticate, async (req, res) => {
 --------------------------------------------------------- */
 router.get("/my", authenticate, async (req, res) => {
   try {
+    await expireOldReservations();
+
     const reservations = await Reservation.find({ studentId: req.user._id })
       .populate("bookId")
       .sort({ reservedAt: -1 });
-    res.json({ success: true, reservations });
+
+    const cooldownRemaining =
+      req.user.cooldownUntil && req.user.cooldownUntil > new Date()
+        ? Math.ceil((req.user.cooldownUntil - new Date()) / 1000)
+        : 0;
+
+    res.json({
+      success: true,
+      reservations,
+      cooldown: {
+        active: cooldownRemaining > 0,
+        remainingSeconds: cooldownRemaining,
+        until: req.user.cooldownUntil,
+      },
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
@@ -122,10 +179,12 @@ router.get("/my", authenticate, async (req, res) => {
 --------------------------------------------------------- */
 router.delete("/:id", authenticate, async (req, res) => {
   const { id } = req.params;
+
   if (!isValidObjectId(id))
     return res.status(400).json({ success: false, error: "Invalid reservation id" });
 
   const { session, txnStarted } = await startSessionWithTxn();
+
   try {
     const reservation = await Reservation.findById(id).session(session);
     if (!reservation) throw new Error("Reservation not found");

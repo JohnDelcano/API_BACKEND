@@ -3,6 +3,8 @@
         "cooldown",
         "favorited",
         "guardianname",
-        "schoolname"
+        "resv",
+        "schoolname",
+        "validpicture"
     ]
 }
