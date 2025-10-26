@@ -47,23 +47,6 @@ app.use("/api/logs", logRoutes);
 // Auto-expire reservations and send SMS reminders every 1 minute
 setInterval(() => expireOldReservations(io), 60 * 1000);
 
-// Every 5 seconds, check if anyone should be inactive
-setInterval(async () => {
-  const now = Date.now();
-  const cutoff = now - 20 * 1000; // 20 seconds
-  try {
-    const result = await Student.updateMany(
-      { status: "Active", lastActive: { $lt: new Date(cutoff) } },
-      { $set: { status: "Inactive" } }
-    );
-    if (result.modifiedCount > 0) {
-      console.log(`Marked ${result.modifiedCount} student(s) as inactive.`);
-    }
-  } catch (err) {
-    console.error("Auto-inactive error:", err.message);
-  }
-}, 5000);
-
 // 404 handler (must come after all routes)
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
