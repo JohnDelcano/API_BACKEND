@@ -39,6 +39,19 @@ router.get("/recommended", async (req, res) => {
   }
 });
 
+// ---------------------------
+// GET ALL STUDENTS (for admin view)
+// ---------------------------
+router.get("/students", async (req, res) => {
+  try {
+    const students = await Student.find().select("-password"); // Exclude password
+    res.json({ success: true, data: students });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error fetching students", error: err.message });
+  }
+});
+
+
 router.get("/recommended/genre/:genre", async (req, res) => {
   try {
     const { genre } = req.params;
