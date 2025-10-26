@@ -239,8 +239,9 @@ router.patch("/:id/status", async (req, res) => {
 router.get("/admin/all", async (req, res) => {
   try {
     const reservations = await Reservation.find()
-      .populate("studentId", "firstName lastName") // populate names
-      .populate("bookId", "title");               // populate book title
+  .populate("studentId", "studentId firstName lastName") // include studentId here
+  .populate("bookId", "title");
+
 
     // Map to frontend-friendly format
     const formatted = reservations.map(r => ({
