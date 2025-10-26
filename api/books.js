@@ -119,18 +119,17 @@ router.post("/", upload.single("picture"), async (req, res) => {
 // ---------------------------
 // DELETE a book
 // ---------------------------
-router.get("/:id", async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    const book = await Book.findById(req.params.id);
-    if (!book) return res.status(404).json({ message: "Book not found" });
+    const deletedBook = await Book.findByIdAndDelete(req.params.id);
+    if (!deletedBook) {
+      return res.status(404).json({ success: false, message: "Book not found" });
+    }
 
-    // Ensure genre is always an array
-    const bookObj = book.toObject();
-    bookObj.genre = Array.isArray(bookObj.genre) ? bookObj.genre : bookObj.genre ? [bookObj.genre] : [];
-
-    res.status(200).json(bookObj);
+    res.status(200).json({ success: true, message: "Book deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Error getting book", error: error.message });
+    console.error(error);
+    res.status(500).json({ success: false, message: "Error deleting book", error: error.message });
   }
 });
 
