@@ -40,7 +40,7 @@ app.use("/api/announcements", announcementRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/reservation", reservationRoutes);
-app.use("/api/logs.js", logRoutes);
+app.use("/api/logs", logRoutes);
 
 // 404 handler (must come after all routes)
 app.use((req, res) => {
