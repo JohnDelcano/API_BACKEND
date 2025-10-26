@@ -40,14 +40,19 @@ router.get("/recommended", async (req, res) => {
 });
 
 // ---------------------------
+// ---------------------------
 // GET ALL STUDENTS (for admin view)
 // ---------------------------
 router.get("/students", async (req, res) => {
   try {
-    const students = await Student.find().select("-password"); // Exclude password
+    const students = await Student.find().select("-password"); // exclude password for security
     res.json({ success: true, data: students });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Error fetching students", error: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching students",
+      error: err.message
+    });
   }
 });
 
