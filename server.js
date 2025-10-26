@@ -11,7 +11,6 @@ import adminRoutes from "./api/admin.js";
 import studentRoutes from "./api/students.js";
 import reservationRoutes from "./api/reservation.js"; 
 import logRoutes from "./api/logs.js"
-import { expireOldReservations } from "./utils/reservationExpiryJob.js";
 
 dotenv.config();
 const app = express();
