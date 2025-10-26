@@ -1,20 +1,22 @@
 import jwt from "jsonwebtoken";
 import Student from "./models/Student.js";
-import Admin from "./models/Admin.js";
+import Admin from "./models/Admin.js"; // 👈 this is required!
 
-// 🧑‍🎓 Authenticate Student
+// 🧑‍🎓 Student Authentication
 export async function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer "))
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({ success: false, error: "No token provided" });
+    }
 
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
 
     const student = await Student.findById(decoded.id);
-    if (!student)
+    if (!student) {
       return res.status(401).json({ success: false, error: "User not found" });
+    }
 
     req.user = student;
     next();
@@ -24,19 +26,21 @@ export async function authenticate(req, res, next) {
   }
 }
 
-// 🧑‍💼 Authenticate Admin
+// 🧑‍💼 Admin Authentication
 export async function authenticateAdmin(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer "))
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({ success: false, error: "No token provided" });
+    }
 
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
 
     const admin = await Admin.findById(decoded.id);
-    if (!admin)
+    if (!admin) {
       return res.status(401).json({ success: false, error: "Admin not found" });
+    }
 
     req.admin = admin;
     next();

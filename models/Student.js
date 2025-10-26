@@ -32,4 +32,4 @@ const studentSchema = new mongoose.Schema({
   failedReservationAttempts: { type: Number, default: 0 },
 }, { timestamps: true });
 
-export default mongoose.model("Student", studentSchema);
+export default mongoose.models.Student || mongoose.model("Student", studentSchema);

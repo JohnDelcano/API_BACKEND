@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
-const bookSchema = new Schema({
+const reservationSchema  = new Schema({
   title: { type: String, required: true },
   author: { type: String },
   totalCount: { type: Number, default: 1 },
@@ -16,4 +16,4 @@ const bookSchema = new Schema({
   },
 }, { timestamps: true });
 
-export default mongoose.model("Book", bookSchema);
+export default mongoose.models.Reservation || mongoose.model("Reservation", reservationSchema);
