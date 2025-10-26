@@ -206,44 +206,57 @@ router.delete("/:id", authenticate, async (req, res) => {
 /* -----------------------------
    PATCH /:id/status (approve/decline)
 ----------------------------- */
+// PATCH /:id/status (approve/decline)
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   const io = req.app.get("io");
 
   try {
+    // Populate both studentId and bookId
     const reservation = await Reservation.findById(id)
-  .populate("studentId", "studentId firstName lastName")
-  .populate("bookId", "title");
+      .populate("studentId", "studentId firstName lastName activeReservations")
+      .populate("bookId", "title");
 
-    if (!reservation) return res.status(404).json({ success: false, message: "Reservation not found" });
+    if (!reservation)
+      return res.status(404).json({ success: false, message: "Reservation not found" });
 
     reservation.status = status;
 
     if (status === "approved") {
+      // Set due date 3 days from now
       reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-      reservation.studentId.activeReservations = Math.max(reservation.studentId.activeReservations, 0);
+
+      // Ensure student.activeReservations exists
+      if (reservation.studentId.activeReservations == null)
+        reservation.studentId.activeReservations = 0;
+
       await reservation.studentId.save();
     }
 
     await reservation.save();
 
-    io.emit("reservationUpdated", {
-  _id: reservation._id,
-  student: reservation.studentId,
-  book: reservation.bookId,
-  reservedAt: reservation.reservedAt,
-  dueDate: reservation.dueDate,
-  status: reservation.status,
-});
+    // Map to frontend-friendly format
+    const formattedReservation = {
+      _id: reservation._id,
+      student: reservation.studentId,
+      book: reservation.bookId,
+      reservedAt: reservation.reservedAt,
+      dueDate: reservation.dueDate,
+      status: reservation.status,
+    };
 
+    // Emit socket event
+    io.emit("reservationUpdated", formattedReservation);
 
-    res.json({ success: true, reservation });
+    // Send response
+    res.json({ success: true, reservation: formattedReservation });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
+
 
 
 // GET /admin/all
