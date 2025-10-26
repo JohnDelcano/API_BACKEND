@@ -5,30 +5,41 @@ import Student from "../models/Student.js";
 const router = express.Router();
 
 // GET all logs
+// GET all logs
 router.get("/", async (req, res) => {
   try {
-    const logs = await Log.find().populate("student").sort({ timeIn: -1 });
+    const logs = await Log.find()
+      .populate("student", "studentId firstName lastName")
+      .sort({ timeIn: -1 });
+
     res.json({ success: true, data: logs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+
+
 // TIME IN
 router.post("/timein", async (req, res) => {
   try {
     const { studentId } = req.body;
     const student = await Student.findOne({ studentId });
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+    if (!student)
+      return res.status(404).json({ success: false, message: "Student not found" });
 
     const log = new Log({ student: student._id });
     await log.save();
 
-    res.json({ success: true, log });
+    // ✅ Populate student info before sending response
+    const populatedLog = await log.populate("student", "studentId firstName lastName");
+
+    res.json({ success: true, log: populatedLog });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // TIME OUT
 router.post("/timeout/:logId", async (req, res) => {
