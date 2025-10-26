@@ -207,7 +207,7 @@ router.delete("/:id", authenticate, async (req, res) => {
 
 
 
-// PATCH /:id/status (approve/decline)
+/// PATCH /:id/status (approve/decline/returned)
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -223,19 +223,23 @@ router.patch("/:id/status", async (req, res) => {
 
     reservation.status = status;
 
-    // 🟡 Update book status based on reservation status
+    // 🔧 Ensure we handle all status transitions correctly
     if (status === "approved") {
       await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Borrowed" });
-      reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+      reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); // +3 days
     } else if (["declined", "cancelled", "expired"].includes(status)) {
       await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
+      reservation.dueDate = null;
+    } else if (status === "returned") {
+      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
+      reservation.dueDate = null;
     } else if (status === "reserved") {
       await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Reserved" });
     } else if (status === "lost") {
       await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Lost" });
     }
 
-    // Save reservation
+    // ✅ Save the updated reservation (important!)
     await reservation.save();
 
     const formattedReservation = {
@@ -255,6 +259,7 @@ router.patch("/:id/status", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
+
 
 
 

@@ -334,4 +334,17 @@ router.put("/me", async (req, res) => {
   }
 });
 
+router.put("/:studentId/active", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    await Student.findByIdAndUpdate(studentId, {
+      $set: { lastActive: new Date(), status: "Active" },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
 export default router;

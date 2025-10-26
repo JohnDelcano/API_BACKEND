@@ -28,6 +28,7 @@ const reservationSchema = new Schema(
       type: Date,
       required: true,
     },
+    dueDate: { type: Date },
     pickedUpAt: {
       type: Date,
     },
