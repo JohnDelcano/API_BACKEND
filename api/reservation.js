@@ -50,10 +50,18 @@ async function expireOldReservations(io) {
     resv.status = "expired";
     await resv.save();
 
-    io.emit("reservationUpdated", {
+      // Send only to that student
+    io.to(resv.studentId.toString()).emit("reservationUpdated", {
       ...resv.toObject(),
       student: studentDoc,
     });
+
+    // Also notify admins (optional)
+    io.to("admins").emit("adminReservationUpdated", {
+      ...resv.toObject(),
+      student: studentDoc,
+    });
+
   }
 }
 
@@ -106,7 +114,18 @@ router.post("/:bookId", authenticate, async (req, res) => {
 
       if (txnStarted) await session.commitTransaction();
 
-      io.emit("reservationUpdated", { ...reservation.toObject(), student: studentDoc });
+            // Notify only the student
+      io.to(studentDoc._id.toString()).emit("reservationUpdated", {
+        ...reservation.toObject(),
+        student: studentDoc,
+      });
+
+      // Notify admins as well (if needed)
+      io.to("admins").emit("adminReservationUpdated", {
+        ...reservation.toObject(),
+        student: studentDoc,
+      });
+
 
       res.status(201).json({
         success: true,
@@ -194,7 +213,14 @@ router.delete("/:id", authenticate, async (req, res) => {
     session.endSession();
 
     // Broadcast cancellation
-    io.emit("reservationUpdated", { ...reservation.toObject() });
+    io.to(reservation.studentId.toString()).emit("reservationUpdated", {
+      ...reservation.toObject(),
+    });
+
+    io.to("admins").emit("adminReservationUpdated", {
+      ...reservation.toObject(),
+    });
+
 
     res.json({ success: true, message: "Reservation cancelled" });
   } catch (err) {
@@ -253,7 +279,12 @@ router.patch("/:id/status", async (req, res) => {
       status: reservation.status,
     };
 
-    io.emit("reservationUpdated", formattedReservation);
+    // Send only to affected student
+    io.to(reservation.studentId._id.toString()).emit("reservationUpdated", formattedReservation);
+
+    // Send to all admins (global dashboard)
+    io.to("admins").emit("adminReservationUpdated", formattedReservation);
+
 
     res.json({ success: true, reservation: formattedReservation });
   } catch (err) {
