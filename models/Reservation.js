@@ -1,58 +1,19 @@
-// Use ES module imports
 import mongoose from "mongoose";
-
 const { Schema } = mongoose;
 
-const reservationSchema = new Schema(
-  {
-    bookId: {
-      type: Schema.Types.ObjectId,
-      ref: "Book",
-      required: true,
-    },
-    studentId: {
-      type: Schema.Types.ObjectId,
-      ref: "Student",
-      required: true,
-    },
-    status: {
-      type: String,
-      enum: ["reserved", "borrowed", "expired", "cancelled", "approved", "declined"],
-      default: "reserved",
-    },
-    reservedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    expiresAt: {
-      type: Date,
-      required: true,
-    },
-    dueDate: { type: Date },
-    pickedUpAt: {
-      type: Date,
-    },
-    attemptedPickups: {
-      type: Number,
-      default: 0,
-    },
-    reminderSent: {
-  type: Boolean,
-  default: false,
-},
-
-    metadata: {
-      type: Object,
-      default: {},
-    },
+const bookSchema = new Schema({
+  title: { type: String, required: true },
+  author: { type: String },
+  totalCount: { type: Number, default: 1 },
+  availableCount: { type: Number, default: 1 },
+  reservedCount: { type: Number, default: 0 },
+  borrowedCount: { type: Number, default: 0 },
+  lostCount: { type: Number, default: 0 },
+  status: { 
+    type: String, 
+    enum: ["Available", "Reserved", "Borrowed", "Lost"],
+    default: "Available",
   },
-  {
-    timestamps: true,
-  }
-);
+}, { timestamps: true });
 
-// Indexes
-reservationSchema.index({ studentId: 1, status: 1 }); // fast lookup for active reservations
-reservationSchema.index({ expiresAt: 1 }); // for expiry job
-
-export default mongoose.model("Reservation", reservationSchema);
+export default mongoose.model("Book", bookSchema);

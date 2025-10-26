@@ -247,29 +247,49 @@ router.patch("/:id/status", async (req, res) => {
     if (!reservation)
       return res.status(404).json({ success: false, message: "Reservation not found" });
 
+    // Update status
     reservation.status = status;
 
-    // 🔧 Ensure we handle all status transitions correctly
-    if (status === "approved") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Borrowed" });
-      reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); // +3 days
-    } else if (["declined", "cancelled", "expired"].includes(status)) {
-      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
-      reservation.dueDate = null;
-    } else if (status === "returned") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
-      reservation.dueDate = null;
-    } else if (status === "returned") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
-      reservation.status = "completed"; // ✅ mark as completed
-      reservation.dueDate = null;
-    } else if (status === "lost") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Lost" });
+    // ✅ Handle all state transitions and counts
+    switch (status) {
+      case "approved":
+        await Book.findByIdAndUpdate(reservation.bookId._id, {
+          $inc: { reservedCount: -1, borrowedCount: 1 },
+          status: "Borrowed",
+        });
+        reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); // +3 days
+        break;
+
+      case "declined":
+      case "cancelled":
+      case "expired":
+        await Book.findByIdAndUpdate(reservation.bookId._id, {
+          $inc: { availableCount: 1, reservedCount: -1 },
+          status: "Available",
+        });
+        reservation.dueDate = null;
+        break;
+
+      case "returned":
+        await Book.findByIdAndUpdate(reservation.bookId._id, {
+          $inc: { availableCount: 1, borrowedCount: -1 },
+          status: "Available",
+        });
+        reservation.status = "completed"; // finalize
+        reservation.dueDate = null;
+        break;
+
+      case "lost":
+        await Book.findByIdAndUpdate(reservation.bookId._id, {
+          $inc: { borrowedCount: -1, lostCount: 1 },
+          status: "Lost",
+        });
+        break;
     }
 
-    // ✅ Save the updated reservation (important!)
     await reservation.save();
 
+    // Prepare response
     const formattedReservation = {
       _id: reservation._id,
       student: reservation.studentId,
@@ -279,12 +299,9 @@ router.patch("/:id/status", async (req, res) => {
       status: reservation.status,
     };
 
-    // Send only to affected student
+    // Notify via sockets
     io.to(reservation.studentId._id.toString()).emit("reservationUpdated", formattedReservation);
-
-    // Send to all admins (global dashboard)
     io.to("admins").emit("adminReservationUpdated", formattedReservation);
-
 
     res.json({ success: true, reservation: formattedReservation });
   } catch (err) {
@@ -292,6 +309,7 @@ router.patch("/:id/status", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
+
 
 
 
