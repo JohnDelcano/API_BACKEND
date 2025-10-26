@@ -150,54 +150,39 @@ router.get("/:studentId/favorites", async (req, res) => {
 router.post("/register", async (req, res) => {
   try {
     const {
-      firstName,
-      lastName,
-      email,
-      password,
-      birthday,
-      phone,
-      address,
-      schoolname,
-      guardian,
-      guardianname,
-      gender,
-      genre,
-      grade,
-      profilePicture,
+      firstName, lastName, email, password,
+      birthday, phone, address, schoolname,
+      guardian, guardianname, gender, genre, grade,
+      profilePicture, validIDs
     } = req.body;
 
-    const { validIDs } = req.body;
     if (!validIDs || validIDs.length < 2) {
       return res.status(400).json({ success: false, message: "2 valid ID pictures required" });
     }
 
-    // Validate required fields
     if (!firstName || !lastName || !email || !password || !profilePicture) {
       return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
     // Validate phone numbers
-    if (phone && isNaN(Number(phone))) {
-      return res.status(400).json({ success: false, message: "Phone must be a number" });
-    }
+    if (phone && isNaN(Number(phone))) return res.status(400).json({ success: false, message: "Phone must be a number" });
+    if (guardian && isNaN(Number(guardian))) return res.status(400).json({ success: false, message: "Guardian phone must be a number" });
 
-    if (guardian && isNaN(Number(guardian))) {
-      return res.status(400).json({ success: false, message: "Guardian phone must be a number" });
-    }
-
-    // heck if email already exists
+    // Check if email already exists
     const emailLower = email.trim().toLowerCase();
     const existing = await Student.findOne({ email: emailLower });
-    if (existing) {
-      return res.status(409).json({ success: false, message: "Email already taken" });
-    }
+    if (existing) return res.status(409).json({ success: false, message: "Email already taken" });
 
-    // Generate Library ID (format: YYYY-0001)
+    // Generate unique Library ID
     const currentYear = new Date().getFullYear();
-    const count = await Student.countDocuments({
-      studentId: { $regex: `^${currentYear}-` }, // Count only IDs from this year
-    });
-    const studentId = `${currentYear}-${(count + 1).toString().padStart(4, "0")}`;
+    let studentId;
+    while (true) {
+      const count = await Student.countDocuments({ studentId: { $regex: `^${currentYear}-` } });
+      studentId = `${currentYear}-${(count + 1).toString().padStart(4, "0")}`;
+
+      const duplicate = await Student.findOne({ studentId });
+      if (!duplicate) break; // unique ID found
+    }
 
     // Hash password
     const hash = await bcrypt.hash(password, 10);
@@ -206,7 +191,7 @@ router.post("/register", async (req, res) => {
     const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
-    // Create new student
+    // Create student
     const student = new Student({
       studentId,
       firstName,
@@ -228,7 +213,6 @@ router.post("/register", async (req, res) => {
 
     await student.save();
 
-    // Send response
     res.status(201).json({
       success: true,
       message: "Student registered successfully",
@@ -237,13 +221,10 @@ router.post("/register", async (req, res) => {
 
   } catch (err) {
     console.error("Registration error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Registration error",
-      error: err.message
-    });
+    res.status(500).json({ success: false, message: "Registration error", error: err.message });
   }
 });
+
 
 
 
