@@ -10,6 +10,7 @@ import announcementRoutes from "./api/announcement.js";
 import adminRoutes from "./api/admin.js";
 import studentRoutes from "./api/students.js";
 import reservationRoutes from "./api/reservation.js"; 
+import logRoutes from "./api/logs.js"
 
 dotenv.config();
 const app = express();
@@ -39,6 +40,7 @@ app.use("/api/announcements", announcementRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/reservation", reservationRoutes);
+app.use("/api/logs.js", logRoutes);
 
 // 404 handler (must come after all routes)
 app.use((req, res) => {

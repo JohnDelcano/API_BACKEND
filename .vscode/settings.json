@@ -5,6 +5,7 @@
         "guardianname",
         "resv",
         "schoolname",
+        "timein",
         "validpicture"
     ]
 }
