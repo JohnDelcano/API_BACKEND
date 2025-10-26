@@ -233,8 +233,10 @@ router.patch("/:id/status", async (req, res) => {
     } else if (status === "returned") {
       await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
       reservation.dueDate = null;
-    } else if (status === "reserved") {
-      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Reserved" });
+    } else if (status === "returned") {
+      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
+      reservation.status = "completed"; // ✅ mark as completed
+      reservation.dueDate = null;
     } else if (status === "lost") {
       await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Lost" });
     }
