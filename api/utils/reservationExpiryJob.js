@@ -1,7 +1,7 @@
 // src/utils/reservationExpiryJob.js
-import Reservation from "../models/Reservation.js";
-import Book from "../models/Book.js";
-import Student from "../models/Student.js";
+import Reservation from "../../models/Reservation";
+import Book from "../../models/Book.js";
+import Student from "../../models/Student.js";
 import { sendSMSReminder } from "./smsService.js";
 
 export async function expireOldReservations(io) {
