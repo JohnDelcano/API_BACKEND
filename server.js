@@ -35,7 +35,7 @@ io.on("connection", (socket) => {
   });
 });
 
-
+export { io };
 app.use(cors());
 app.use(express.json());
 
