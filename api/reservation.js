@@ -72,6 +72,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
   const student = req.user;
   const { bookId } = req.params;
   const io = req.app.get("io");
+  console.log("📘 Incoming reservation request for bookId:", bookId);
 
   if (!isValidObjectId(bookId))
     return res.status(400).json({ success: false, error: "Invalid bookId" });
