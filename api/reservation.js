@@ -212,7 +212,10 @@ router.patch("/:id/status", async (req, res) => {
   const io = req.app.get("io");
 
   try {
-    const reservation = await Reservation.findById(id).populate("studentId");
+    const reservation = await Reservation.findById(id)
+  .populate("studentId", "studentId firstName lastName")
+  .populate("bookId", "title");
+
     if (!reservation) return res.status(404).json({ success: false, message: "Reservation not found" });
 
     reservation.status = status;
@@ -225,7 +228,15 @@ router.patch("/:id/status", async (req, res) => {
 
     await reservation.save();
 
-    io.emit("reservationUpdated", reservation);
+    io.emit("reservationUpdated", {
+  _id: reservation._id,
+  student: reservation.studentId,
+  book: reservation.bookId,
+  reservedAt: reservation.reservedAt,
+  dueDate: reservation.dueDate,
+  status: reservation.status,
+});
+
 
     res.json({ success: true, reservation });
   } catch (err) {
