@@ -35,6 +35,11 @@ const reservationSchema = new Schema(
       type: Number,
       default: 0,
     },
+    reminderSent: {
+  type: Boolean,
+  default: false,
+},
+
     metadata: {
       type: Object,
       default: {},

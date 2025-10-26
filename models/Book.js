@@ -13,6 +13,11 @@ const bookSchema = new mongoose.Schema({
   availableCount: { type: Number, default: 1 },
   reservedCount: { type: Number, default: 0 },
   borrowedCount: { type: Number, default: 0 },
+  status: {
+  type: String,
+  enum: ["Available", "Reserved", "Borrowed", "Lost"],
+  default: "Available",
+},
   createdAt: { type: Date, default: Date.now }  
 }, {
   timestamps: true,

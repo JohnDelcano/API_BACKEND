@@ -11,6 +11,7 @@ import adminRoutes from "./api/admin.js";
 import studentRoutes from "./api/students.js";
 import reservationRoutes from "./api/reservation.js"; 
 import logRoutes from "./api/logs.js"
+import { expireOldReservations } from "./utils/reservationExpiryJob.js";
 
 dotenv.config();
 const app = express();
@@ -41,6 +42,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/reservation", reservationRoutes);
 app.use("/api/logs", logRoutes);
+
+// Auto-expire reservations and send SMS reminders every 1 minute
+setInterval(() => expireOldReservations(io), 60 * 1000);
+
 
 // 404 handler (must come after all routes)
 app.use((req, res) => {

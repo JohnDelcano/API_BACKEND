@@ -40,10 +40,13 @@ async function expireOldReservations(io) {
   for (const resv of expired) {
     await Book.findByIdAndUpdate(resv.bookId, {
       $inc: { availableCount: 1, reservedCount: -1 },
+      status: "Available", // 🟢 Add this
     });
-    const studentDoc = await Student.findByIdAndUpdate(resv.studentId, {
-      $inc: { activeReservations: -1 },
-    }, { new: true });
+    const studentDoc = await Student.findByIdAndUpdate(
+      resv.studentId,
+      { $inc: { activeReservations: -1 } },
+      { new: true }
+    );
     resv.status = "expired";
     await resv.save();
 
@@ -99,7 +102,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
       );
 
       studentDoc.activeReservations = (studentDoc.activeReservations || 0) + 1;
-      await studentDoc.save({ session });
+      await Book.findByIdAndUpdate(bookId, { status: "Reserved" }, { session });
 
       if (txnStarted) await session.commitTransaction();
 
@@ -203,9 +206,7 @@ router.delete("/:id", authenticate, async (req, res) => {
 });
 
 
-/* -----------------------------
-   PATCH /:id/status (approve/decline)
------------------------------ */
+
 // PATCH /:id/status (approve/decline)
 router.patch("/:id/status", async (req, res) => {
   const { id } = req.params;
@@ -213,30 +214,30 @@ router.patch("/:id/status", async (req, res) => {
   const io = req.app.get("io");
 
   try {
-    // Populate both studentId and bookId
     const reservation = await Reservation.findById(id)
       .populate("studentId", "studentId firstName lastName activeReservations")
-      .populate("bookId", "title");
+      .populate("bookId");
 
     if (!reservation)
       return res.status(404).json({ success: false, message: "Reservation not found" });
 
     reservation.status = status;
 
+    // 🟡 Update book status based on reservation status
     if (status === "approved") {
-      // Set due date 3 days from now
+      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Borrowed" });
       reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-
-      // Ensure student.activeReservations exists
-      if (reservation.studentId.activeReservations == null)
-        reservation.studentId.activeReservations = 0;
-
-      await reservation.studentId.save();
+    } else if (["declined", "cancelled", "expired"].includes(status)) {
+      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Available" });
+    } else if (status === "reserved") {
+      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Reserved" });
+    } else if (status === "lost") {
+      await Book.findByIdAndUpdate(reservation.bookId._id, { status: "Lost" });
     }
 
+    // Save reservation
     await reservation.save();
 
-    // Map to frontend-friendly format
     const formattedReservation = {
       _id: reservation._id,
       student: reservation.studentId,
@@ -246,10 +247,8 @@ router.patch("/:id/status", async (req, res) => {
       status: reservation.status,
     };
 
-    // Emit socket event
     io.emit("reservationUpdated", formattedReservation);
 
-    // Send response
     res.json({ success: true, reservation: formattedReservation });
   } catch (err) {
     console.error(err);
