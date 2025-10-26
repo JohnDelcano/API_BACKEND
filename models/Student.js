@@ -20,6 +20,15 @@ const studentSchema = new mongoose.Schema({
   favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
   activeReservations: { type: Number, default: 0 },
   cooldownUntil: { type: Date },
+  status: {
+    type: String,
+    enum: ["Pending", "Active", "Inactive", "Blocked"],
+    default: "Pending",
+  },
+  lastActive: {
+    type: Date,
+    default: Date.now,
+  },
   failedReservationAttempts: { type: Number, default: 0 },
 }, { timestamps: true });
 
