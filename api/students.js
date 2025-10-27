@@ -40,10 +40,46 @@ router.get("/recommended", async (req, res) => {
 });
 
 // ---------------------------
+// VERIFY STUDENT (Admin Action)
+// ---------------------------
+router.patch("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, cooldownUntil, activeReservations } = req.body;
+
+    const student = await Student.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          status: status || "Active",
+          cooldownUntil: cooldownUntil || null,
+          activeReservations: activeReservations ?? 0,
+        },
+      },
+      { new: true }
+    ).select("-password");
+
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    res.json({
+      success: true,
+      message: `${student.firstName} ${student.lastName} has been verified.`,
+      student,
+    });
+  } catch (err) {
+    console.error("Error verifying student:", err);
+    res.status(500).json({ success: false, message: "Failed to verify student", error: err.message });
+  }
+});
+
+
+// ---------------------------
 // ---------------------------
 // GET ALL STUDENTS (for admin view)
 // ---------------------------
-router.get("/students", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const students = await Student.find().select("-password"); // exclude password for security
     res.json({ success: true, data: students });
