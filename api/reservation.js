@@ -242,7 +242,7 @@ router.patch("/:id/status", async (req, res) => {
           $inc: { reservedCount: -1, borrowedCount: 1 },
           status: "Borrowed",
         });
-        reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); // Set due date to 3 days from now
         break;
 
       case "declined":
@@ -256,12 +256,13 @@ router.patch("/:id/status", async (req, res) => {
         break;
 
       case "returned":
+        // When the book is returned:
         await Book.findByIdAndUpdate(reservation.bookId._id, {
-          $inc: { availableCount: 1, borrowedCount: -1 },
+          $inc: { availableCount: 1, borrowedCount: -1 }, // Mark as available
           status: "Available",
         });
-        reservation.status = "completed";
-        reservation.dueDate = null;
+        reservation.status = "completed"; // Mark the reservation as completed
+        reservation.dueDate = null; // Clear the due date
         break;
 
       case "lost":
@@ -274,6 +275,7 @@ router.patch("/:id/status", async (req, res) => {
 
     await reservation.save();
 
+    // Send updated reservation to the user and admin via Socket.IO
     const formattedReservation = {
       _id: reservation._id,
       student: reservation.studentId,
@@ -283,7 +285,9 @@ router.patch("/:id/status", async (req, res) => {
       status: reservation.status,
     };
 
+    // Notify the user
     io.to(reservation.studentId._id.toString()).emit("reservationUpdated", formattedReservation);
+    // Notify the admins
     io.to("admins").emit("adminReservationUpdated", formattedReservation);
 
     res.json({ success: true, reservation: formattedReservation });
@@ -292,7 +296,6 @@ router.patch("/:id/status", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
-
 /* ---------------------------------------
    🧾 GET /api/reservation/admin/all
    Admin: view all reservations

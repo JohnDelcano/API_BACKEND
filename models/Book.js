@@ -15,7 +15,7 @@ const bookSchema = new mongoose.Schema({
     enum: ["Available", "Reserved", "Borrowed", "Lost"],
     default: "Available",
   },
-});
+}, { timestamps: true });
 
 bookSchema.pre("save", function (next) {
   if (this.lostCount > 0) {
