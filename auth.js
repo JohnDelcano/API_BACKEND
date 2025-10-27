@@ -1,51 +1,42 @@
+// routes/auth.js
+import express from "express";
 import jwt from "jsonwebtoken";
-import Student from "./models/Student.js";
-import Admin from "./models/Admin.js"; // 👈 this is required!
+import bcrypt from "bcryptjs";
+import Student from "../models/Student.js";
 
-// 🧑‍🎓 Student Authentication
-export async function authenticate(req, res, next) {
+const router = express.Router();
+
+// 🧑‍🎓 Student Login
+router.post("/login", async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, error: "No token provided" });
-    }
+    const { studentId, password } = req.body;
 
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
-
-    const student = await Student.findById(decoded.id);
+    const student = await Student.findOne({ studentId });
     if (!student) {
-      return res.status(401).json({ success: false, error: "User not found" });
+      return res.status(404).json({ success: false, error: "Student not found" });
     }
 
-    req.user = student;
-    next();
+    const isMatch = await bcrypt.compare(password, student.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, error: "Invalid credentials" });
+    }
+
+    // ✅ Sign JWT with student._id
+    const token = jwt.sign(
+      { id: student._id },
+      process.env.JWT_SECRET || "dev_secret",
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      success: true,
+      token,
+      student: { id: student._id, name: student.name, studentId: student.studentId },
+    });
   } catch (err) {
-    console.error("Student auth error:", err);
-    res.status(401).json({ success: false, error: "Invalid or expired token" });
+    console.error("Login error:", err);
+    res.status(500).json({ success: false, error: "Server error" });
   }
-}
+});
 
-// 🧑‍💼 Admin Authentication
-export async function authenticateAdmin(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, error: "No token provided" });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
-
-    const admin = await Admin.findById(decoded.id);
-    if (!admin) {
-      return res.status(401).json({ success: false, error: "Admin not found" });
-    }
-
-    req.admin = admin;
-    next();
-  } catch (err) {
-    console.error("Admin auth error:", err);
-    res.status(401).json({ success: false, error: "Invalid or expired token" });
-  }
-}
+export default router;
