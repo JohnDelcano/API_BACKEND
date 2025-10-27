@@ -256,21 +256,21 @@ router.patch("/:id/status", async (req, res) => {
         break;
 
       case "returned":
-        // When the book is returned:
-        await Book.findByIdAndUpdate(reservation.bookId._id, {
-          $inc: { availableCount: 1, borrowedCount: -1 }, // Mark as available
-          status: "Available",
-        });
-        reservation.status = "completed"; // Mark the reservation as completed
-        reservation.dueDate = null; // Clear the due date
-        break;
+  await Book.findByIdAndUpdate(reservation.bookId._id, {
+    $inc: { availableCount: 1, borrowedCount: -1 }, // Mark as available and decrease borrowed count
+    status: "Available", // Ensure status is set back to Available
+  });
 
-      case "lost":
-        await Book.findByIdAndUpdate(reservation.bookId._id, {
-          $inc: { borrowedCount: -1, lostCount: 1 },
-          status: "Lost",
-        });
-        break;
+  // Update student reservations count
+  await Student.findByIdAndUpdate(reservation.studentId._id, {
+    $inc: { activeReservations: -1 }, // Decrease active reservations by 1
+  });
+
+  reservation.status = "completed"; // Mark the reservation as completed
+  reservation.dueDate = null; // Clear the due date
+
+  break;
+
     }
 
     await reservation.save();
