@@ -7,6 +7,7 @@ import Book from "../models/Book.js";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
+import { io } from "../server.js";
 
 const router = express.Router();
 
@@ -72,6 +73,7 @@ router.patch("/:id", async (req, res) => {
     console.error("Error verifying student:", err);
     res.status(500).json({ success: false, message: "Failed to verify student", error: err.message });
   }
+  io.to(student._id.toString()).emit("userVerified", { status: student.status });
 });
 
 
