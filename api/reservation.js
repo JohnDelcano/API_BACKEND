@@ -3,7 +3,6 @@ import mongoose from "mongoose";
 import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
-import { authenticate } from "../auth.js";
 
 const router = express.Router();
 
