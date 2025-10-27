@@ -7,27 +7,34 @@ import Admin from "./models/Admin.js";
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 
 // -------------------- Student Auth --------------------
-export const authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  console.log("🔐 Received header:", authHeader); // <--- add this
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    console.log("🚫 No token or invalid format");
-    return res.status(401).json({ success: false, error: "No token provided" });
-  }
-
-  const token = authHeader.split(" ")[1];
+export const authenticate = async (req, res, next) => {
   try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, error: "No token provided" });
+    }
+
+    const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
-    console.log("✅ Decoded token:", decoded);
-    req.user = decoded;
+
+    const student = await Student.findById(decoded.id);
+    if (!student)
+      return res
+        .status(404)
+        .json({ success: false, error: "Student not found" });
+
+    req.user = student; // attach full student document
     next();
-  } catch (error) {
-    console.log("❌ JWT verification failed:", error.message);
-    return res.status(401).json({ success: false, error: "Invalid token" });
+  } catch (err) {
+    console.error("Auth error:", err);
+    res
+      .status(401)
+      .json({ success: false, error: "Invalid or expired token" });
   }
 };
-
 
 // -------------------- Admin Auth --------------------
 export async function authenticateAdmin(req, res, next) {

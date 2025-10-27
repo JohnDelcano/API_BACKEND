@@ -8,6 +8,8 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { io } from "../server.js";
+import { authenticate } from "../auth.js";
+
 
 const router = express.Router();
 
@@ -405,24 +407,47 @@ router.post("/google", async (req, res) => {
 
 
 // SIGNIN
+// SIGNIN
 router.post("/signin", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
+    if (!email || !password)
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and password required" });
 
     const student = await Student.findOne({ email: email.trim().toLowerCase() });
-    if (!student) return res.status(401).json({ success: false, message: "Invalid email" });
+    if (!student)
+      return res.status(401).json({ success: false, message: "Invalid email" });
 
     const isMatch = await bcrypt.compare(password, student.password);
-    if (!isMatch) return res.status(401).json({ success: false, message: "Invalid password" });
+    if (!isMatch)
+      return res.status(401).json({ success: false, message: "Invalid password" });
 
-    const token = jwt.sign({ id: student._id, email: student.email,  libraryID: student.libraryID }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "7d" });
+    // ✅ Generate proper JWT token
+    const token = jwt.sign(
+      { id: student._id, email: student.email, studentId: student.studentId }, // <-- FIXED
+      process.env.JWT_SECRET || "dev_secret",
+      { expiresIn: "7d" }
+    );
 
-    res.json({ success: true, message: "Login successful", token, student: { ...student.toObject(), password: undefined } });
+    // ✅ Clean sensitive fields
+    const cleanStudent = { ...student.toObject(), password: undefined };
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      student: cleanStudent,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Login error", error: err.message });
+    console.error("Login error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Login error", error: err.message });
   }
 });
+
 
 
 
