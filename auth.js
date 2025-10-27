@@ -1,42 +1,23 @@
-// routes/auth.js
-import express from "express";
+// auth.js
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import Student from "./models/Student.js";
+import Admin from "./models/Admin.js";
 
-const router = express.Router();
-
-// 🧑‍🎓 Student Login
-router.post("/login", async (req, res) => {
+export async function authenticate(req, res, next) {
   try {
-    const { studentId, password } = req.body;
-
-    const student = await Student.findOne({ studentId });
-    if (!student) {
-      return res.status(404).json({ success: false, error: "Student not found" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, error: "No token provided" });
     }
 
-    const isMatch = await bcrypt.compare(password, student.password);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, error: "Invalid credentials" });
-    }
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const student = await Student.findById(decoded.id);
+    if (!student) return res.status(401).json({ success: false, error: "User not found" });
 
-    // ✅ Sign JWT with student._id
-    const token = jwt.sign(
-      { id: student._id },
-      process.env.JWT_SECRET || "dev_secret",
-      { expiresIn: "7d" }
-    );
-
-    res.json({
-      success: true,
-      token,
-      student: { id: student._id, name: student.name, studentId: student.studentId },
-    });
+    req.user = student;
+    next();
   } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ success: false, error: "Server error" });
+    res.status(401).json({ success: false, error: "Invalid or expired token" });
   }
-});
-
-export default router;
+}
