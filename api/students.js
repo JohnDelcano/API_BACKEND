@@ -145,66 +145,101 @@ router.delete("/:studentId/favorites/:bookId", async (req, res) => {
 });
 
 // ---------------------------
-// CHANGE EMAIL
+// CHANGE EMAIL (with old email confirmation)
 // ---------------------------
 router.put("/me/email", async (req, res) => {
   try {
     const auth = req.headers.authorization;
-    if (!auth) return res.status(401).json({ success: false, message: "Authorization header missing" });
+    if (!auth)
+      return res.status(401).json({ success: false, message: "Authorization header missing" });
 
     const token = auth.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
 
-    const { newEmail } = req.body;
-    if (!newEmail) return res.status(400).json({ success: false, message: "New email required" });
+    const { oldEmail, newEmail } = req.body;
 
-    // check if new email already exists
-    const existing = await Student.findOne({ email: newEmail.trim().toLowerCase() });
-    if (existing) return res.status(409).json({ success: false, message: "Email already in use" });
+    if (!oldEmail || !newEmail) {
+      return res.status(400).json({ success: false, message: "Old and new email are required" });
+    }
 
     const student = await Student.findById(decoded.id);
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+    if (!student)
+      return res.status(404).json({ success: false, message: "Student not found" });
 
+    // Check if old email matches current one
+    if (student.email.trim().toLowerCase() !== oldEmail.trim().toLowerCase()) {
+      return res.status(401).json({ success: false, message: "Old email does not match current account" });
+    }
+
+    // Prevent duplicate new email
+    const existing = await Student.findOne({ email: newEmail.trim().toLowerCase() });
+    if (existing)
+      return res.status(409).json({ success: false, message: "New email is already in use" });
+
+    // Update email
     student.email = newEmail.trim().toLowerCase();
     await student.save();
 
-    res.json({ success: true, message: "Email updated successfully", student: { ...student.toObject(), password: undefined } });
+    res.json({
+      success: true,
+      message: "Email updated successfully",
+      student: { ...student.toObject(), password: undefined },
+    });
   } catch (err) {
+    console.error("Email update error:", err);
     res.status(500).json({ success: false, message: "Error updating email", error: err.message });
   }
 });
 
 
 // ---------------------------
-// CHANGE PASSWORD
+// CHANGE PASSWORD (secure with bcrypt)
 // ---------------------------
 router.put("/me/password", async (req, res) => {
   try {
     const auth = req.headers.authorization;
-    if (!auth) return res.status(401).json({ success: false, message: "Authorization header missing" });
+    if (!auth)
+      return res.status(401).json({ success: false, message: "Authorization header missing" });
 
     const token = auth.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
 
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword) {
-      return res.status(400).json({ success: false, message: "Old and new passwords required" });
+      return res.status(400).json({ success: false, message: "Old and new passwords are required" });
     }
 
-    const student = await Student.findById(decoded.id);
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+    const student = await Student.findById(decoded.id).select("+password");
+    if (!student)
+      return res.status(404).json({ success: false, message: "Student not found" });
 
+    // Compare old password
     const isMatch = await bcrypt.compare(oldPassword, student.password);
-    if (!isMatch) return res.status(401).json({ success: false, message: "Old password incorrect" });
+    if (!isMatch) {
+      return res.status(401).json({ success: false, message: "Old password is incorrect" });
+    }
 
-    student.password = await bcrypt.hash(newPassword, 10);
+    // Prevent reusing the same password
+    const samePassword = await bcrypt.compare(newPassword, student.password);
+    if (samePassword) {
+      return res.status(400).json({ success: false, message: "New password cannot be the same as the old one" });
+    }
+
+    // Hash new password and save
+    const salt = await bcrypt.genSalt(10);
+    student.password = await bcrypt.hash(newPassword, salt);
     await student.save();
 
-    res.json({ success: true, message: "Password updated successfully" });
+    res.json({
+      success: true,
+      message: "Password updated successfully",
+    });
   } catch (err) {
+    console.error("Password update error:", err);
     res.status(500).json({ success: false, message: "Error updating password", error: err.message });
   }
 });
+
 
 
 
