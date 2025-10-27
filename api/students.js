@@ -480,5 +480,105 @@ router.put("/:studentId/active", async (req, res) => {
   }
 });
 
+// AUTH & REGISTRATION
+// ---------------------------
+router.post("/register", async (req, res) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      birthday,
+      phone,
+      address,
+      schoolname,
+      guardian,
+      guardianname,
+      gender,
+      genre,
+      grade,
+      profilePicture,
+    } = req.body;
+
+    const { validIDs } = req.body;
+    if (!validIDs || validIDs.length < 2) {
+      return res.status(400).json({ success: false, message: "2 valid ID pictures required" });
+    }
+
+    // Validate required fields
+    if (!firstName || !lastName || !email || !password || !profilePicture) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    // Validate phone numbers
+    if (phone && isNaN(Number(phone))) {
+      return res.status(400).json({ success: false, message: "Phone must be a number" });
+    }
+
+    if (guardian && isNaN(Number(guardian))) {
+      return res.status(400).json({ success: false, message: "Guardian phone must be a number" });
+    }
+
+    // heck if email already exists
+    const emailLower = email.trim().toLowerCase();
+    const existing = await Student.findOne({ email: emailLower });
+    if (existing) {
+      return res.status(409).json({ success: false, message: "Email already taken" });
+    }
+
+    // Generate Library ID (format: YYYY-0001)
+    const currentYear = new Date().getFullYear();
+    const count = await Student.countDocuments({
+      studentId: { $regex: `^${currentYear}-` }, // Count only IDs from this year
+    });
+    const studentId = `${currentYear}-${(count + 1).toString().padStart(4, "0")}`;
+
+    // Hash password
+    const hash = await bcrypt.hash(password, 10);
+
+    // Parse optional fields
+    const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
+    const birthdayDate = birthday ? new Date(birthday) : undefined;
+
+    // Create new student
+    const student = new Student({
+      studentId,
+      firstName,
+      lastName,
+      email: emailLower,
+      password: hash,
+      profilePicture,
+      validIDs,
+      birthday: birthdayDate,
+      phone: phone ? Number(phone) : undefined,
+      address,
+      schoolname,
+      guardian: guardian ? Number(guardian) : undefined,
+      guardianname,
+      gender,
+      genre: parsedGenre,
+      grade
+    });
+
+    await student.save();
+
+    // Send response
+    res.status(201).json({
+      success: true,
+      message: "Student registered successfully",
+      student: { ...student.toObject(), password: undefined }
+    });
+
+  } catch (err) {
+    console.error("Registration error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Registration error",
+      error: err.message
+    });
+  }
+});
+
 
 export default router;
