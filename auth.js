@@ -15,7 +15,7 @@ export async function authenticate(req, res, next) {
     }
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
 
     const student = await Student.findById(decoded.id);
     if (!student) {
@@ -38,7 +38,7 @@ export async function authenticateAdmin(req, res, next) {
     }
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
 
     const admin = await Admin.findById(decoded.id);
     if (!admin) {
