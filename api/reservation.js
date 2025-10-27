@@ -9,7 +9,7 @@ const router = express.Router();
 
 // Constants
 const MAX_ACTIVE_RESERVATIONS = 3; // Increased to 3
-const RESERVATION_EXPIRY_HOURS = 1; // 1 hour for pickup
+const RESERVATION_EXPIRY_HOURS = 2; // 1 hour for pickup
 
 // Validate ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -27,6 +27,7 @@ async function startSessionWithTxn() {
   return { session, txnStarted };
 }
 
+
 /* -----------------------------
    Expire old reservations
 ----------------------------- */
@@ -40,30 +41,24 @@ async function expireOldReservations(io) {
   for (const resv of expired) {
     await Book.findByIdAndUpdate(resv.bookId, {
       $inc: { availableCount: 1, reservedCount: -1 },
-      status: "Available", // 🟢 Add this
+      status: "Available",
     });
-    const studentDoc = await Student.findByIdAndUpdate(
+
+    await Student.findByIdAndUpdate(
       resv.studentId,
       { $inc: { activeReservations: -1 } },
       { new: true }
     );
+
     resv.status = "expired";
     await resv.save();
 
-      // Send only to that student
-    io.to(resv.studentId.toString()).emit("reservationUpdated", {
-      ...resv.toObject(),
-      student: studentDoc,
-    });
-
-    // Also notify admins (optional)
-    io.to("admins").emit("adminReservationUpdated", {
-      ...resv.toObject(),
-      student: studentDoc,
-    });
-
+    // Emit socket updates
+    io.to(resv.studentId.toString()).emit("reservationUpdated", resv.toObject());
+    io.to("admins").emit("adminReservationUpdated", resv.toObject());
   }
 }
+
 
 /* -----------------------------
    POST /reserve/:bookId
@@ -72,7 +67,6 @@ router.post("/:bookId", authenticate, async (req, res) => {
   const student = req.user;
   const { bookId } = req.params;
   const io = req.app.get("io");
-  console.log("📘 Incoming reservation request for bookId:", bookId);
 
   if (!isValidObjectId(bookId))
     return res.status(400).json({ success: false, error: "Invalid bookId" });
@@ -81,63 +75,55 @@ router.post("/:bookId", authenticate, async (req, res) => {
     await expireOldReservations(io);
 
     const { session, txnStarted } = await startSessionWithTxn();
+    const studentDoc = await Student.findById(student._id).session(session);
+    if (!studentDoc) throw new Error("Student not found");
 
-    try {
-      const studentDoc = await Student.findById(student._id).session(session);
-      if (!studentDoc) throw new Error("Student not found");
+    // ✅ Count only "approved" (borrowed) books for the 3-book limit
+    const activeApproved = await Reservation.countDocuments({
+      studentId: studentDoc._id,
+      status: "approved",
+    });
 
-      if ((studentDoc.activeReservations || 0) >= MAX_ACTIVE_RESERVATIONS)
-        throw new Error(`You can only reserve up to ${MAX_ACTIVE_RESERVATIONS} books`);
+    if (activeApproved >= MAX_ACTIVE_RESERVATIONS)
+      throw new Error(`You can only borrow up to ${MAX_ACTIVE_RESERVATIONS} books at a time`);
 
-      const book = await Book.findOneAndUpdate(
-        { _id: bookId, availableCount: { $gt: 0 } },
-        { $inc: { availableCount: -1, reservedCount: 1 } },
-        { new: true, session }
-      );
+    // Reserve only if available copies exist
+    const book = await Book.findOneAndUpdate(
+      { _id: bookId, availableCount: { $gt: 0 } },
+      { $inc: { availableCount: -1, reservedCount: 1 }, status: "Reserved" },
+      { new: true, session }
+    );
+    if (!book) throw new Error("No available copies");
 
-      if (!book) throw new Error("No available copies");
+    // ⏰ Expire after 2 hours
+    const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
 
-      const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
-
-      const [reservation] = await Reservation.create(
-        [{
+    const [reservation] = await Reservation.create(
+      [
+        {
           bookId,
           studentId: studentDoc._id,
           reservedAt: new Date(),
           expiresAt,
           status: "reserved",
-        }],
-        { session }
-      );
+        },
+      ],
+      { session }
+    );
 
-      studentDoc.activeReservations = (studentDoc.activeReservations || 0) + 1;
-      await Book.findByIdAndUpdate(bookId, { status: "Reserved" }, { session });
+    if (txnStarted) await session.commitTransaction();
+    session.endSession();
 
-      if (txnStarted) await session.commitTransaction();
+    io.to(studentDoc._id.toString()).emit("reservationUpdated", reservation.toObject());
+    io.to("admins").emit("adminReservationUpdated", reservation.toObject());
 
-            // Notify only the student
-      io.to(studentDoc._id.toString()).emit("reservationUpdated", {
-        ...reservation.toObject(),
-        student: studentDoc,
-      });
-
-      // Notify admins as well (if needed)
-      io.to("admins").emit("adminReservationUpdated", {
-        ...reservation.toObject(),
-        student: studentDoc,
-      });
-
-
-      res.status(201).json({
-        success: true,
-        message: "Book reserved successfully",
-        reservation,
-        student: studentDoc,
-      });
-    } finally {
-      session.endSession();
-    }
+    res.status(201).json({
+      success: true,
+      message: "Book reserved successfully",
+      reservation,
+    });
   } catch (err) {
+    console.error("❌ Reservation failed:", err);
     res.status(400).json({ success: false, error: err.message || "Reservation failed" });
   }
 });
