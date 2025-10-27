@@ -226,10 +226,13 @@ router.patch("/:id/status", async (req, res) => {
   const { status } = req.body;
   const io = req.app.get("io");
 
+  const { session, txnStarted } = await startSessionWithTxn();
+
   try {
     const reservation = await Reservation.findById(id)
       .populate("studentId", "studentId firstName lastName activeReservations")
-      .populate("bookId");
+      .populate("bookId")
+      .session(session);
 
     if (!reservation)
       return res.status(404).json({ success: false, message: "Reservation not found" });
@@ -256,26 +259,25 @@ router.patch("/:id/status", async (req, res) => {
         break;
 
       case "returned":
-  await Book.findByIdAndUpdate(reservation.bookId._id, {
-    $inc: { availableCount: 1, borrowedCount: -1 }, // Mark as available and decrease borrowed count
-    status: "Available", // Ensure status is set back to Available
-  });
+        await Book.findByIdAndUpdate(reservation.bookId._id, {
+          $inc: { availableCount: 1, borrowedCount: -1 },
+          status: "Available", // Set book status to Available
+        });
 
-  // Update student reservations count
-  await Student.findByIdAndUpdate(reservation.studentId._id, {
-    $inc: { activeReservations: -1 }, // Decrease active reservations by 1
-  });
+        await Student.findByIdAndUpdate(reservation.studentId._id, {
+          $inc: { activeReservations: -1 }, // Decrease active reservations by 1
+        });
 
-  reservation.status = "completed"; // Mark the reservation as completed
-  reservation.dueDate = null; // Clear the due date
-
-  break;
-
+        reservation.status = "completed";
+        reservation.dueDate = null; // No need for due date anymore
+        break;
     }
 
-    await reservation.save();
+    await reservation.save({ session });
+    if (txnStarted) await session.commitTransaction();
+    session.endSession();
 
-    // Send updated reservation to the user and admin via Socket.IO
+    // Emit updates to user and admin
     const formattedReservation = {
       _id: reservation._id,
       student: reservation.studentId,
@@ -285,17 +287,18 @@ router.patch("/:id/status", async (req, res) => {
       status: reservation.status,
     };
 
-    // Notify the user
     io.to(reservation.studentId._id.toString()).emit("reservationUpdated", formattedReservation);
-    // Notify the admins
     io.to("admins").emit("adminReservationUpdated", formattedReservation);
 
     res.json({ success: true, reservation: formattedReservation });
   } catch (err) {
+    if (txnStarted) await session.abortTransaction();
+    session.endSession();
     console.error(err);
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
+
 /* ---------------------------------------
    🧾 GET /api/reservation/admin/all
    Admin: view all reservations
