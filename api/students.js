@@ -11,6 +11,7 @@ import { io } from "../server.js";
 
 const router = express.Router();
 
+
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -400,6 +401,7 @@ router.post("/google", async (req, res) => {
     res.status(500).json({ success: false, message: "Google login error", error: err.message });
   }
 });
+
 
 
 // SIGNIN

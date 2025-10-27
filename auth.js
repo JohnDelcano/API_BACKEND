@@ -1,22 +1,27 @@
 // auth.js
 import jwt from "jsonwebtoken";
+import Student from "./models/Student.js";
 import Admin from "./models/Admin.js";
 
-router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
 
-  const student = await Student.findOne({ email });
-  if (!student) return res.status(400).json({ success: false, error: "Invalid email" });
+export async function authenticate(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, error: "No token provided" });
+    }
 
-  const isMatch = await student.comparePassword(password);
-  if (!isMatch) return res.status(400).json({ success: false, error: "Invalid password" });
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
+    const student = await Student.findById(decoded.id);
+    if (!student) return res.status(401).json({ success: false, error: "User not found" });
 
-  const token = jwt.sign({ id: student._id }, process.env.JWT_SECRET || "dev_secret", {
-    expiresIn: "1d",
-  });
-
-  res.json({ success: true, token, student });
-});
+    req.user = student;
+    next();
+  } catch (err) {
+    res.status(401).json({ success: false, error: "Invalid or expired token" });
+  }
+}
 
 
 /* ------------------------------------------
