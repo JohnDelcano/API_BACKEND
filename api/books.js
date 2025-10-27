@@ -38,6 +38,18 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/updates", async (req, res) => {
+  try {
+    const books = await Book.find()
+      .sort({ updatedAt: -1 })
+      .limit(10); // latest 10 books
+    res.json(books);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
 // ---------------------------
 // GET recommended books (top favorites)
 // ---------------------------
