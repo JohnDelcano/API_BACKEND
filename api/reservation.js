@@ -60,9 +60,6 @@ async function expireOldReservations(io) {
 }
 
 
-/* -----------------------------
-   POST /reserve/:bookId
------------------------------ */
 router.post("/:bookId", authenticate, async (req, res) => {
   const student = req.user;
   const { bookId } = req.params;
@@ -78,7 +75,14 @@ router.post("/:bookId", authenticate, async (req, res) => {
     const studentDoc = await Student.findById(student._id).session(session);
     if (!studentDoc) throw new Error("Student not found");
 
-    // ✅ Count only "approved" (borrowed) books for the 3-book limit
+    // 🚫 Check if verified
+    if (studentDoc.status !== "Active") {
+      throw new Error(
+        "Your account has not been verified by an admin yet. You cannot reserve books until verification."
+      );
+    }
+
+    // ✅ Count only approved books for the 3-book limit
     const activeApproved = await Reservation.countDocuments({
       studentId: studentDoc._id,
       status: "approved",
@@ -87,7 +91,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
     if (activeApproved >= MAX_ACTIVE_RESERVATIONS)
       throw new Error(`You can only borrow up to ${MAX_ACTIVE_RESERVATIONS} books at a time`);
 
-    // Reserve only if available copies exist
+    // ✅ Continue reservation if verified
     const book = await Book.findOneAndUpdate(
       { _id: bookId, availableCount: { $gt: 0 } },
       { $inc: { availableCount: -1, reservedCount: 1 }, status: "Reserved" },
@@ -95,7 +99,6 @@ router.post("/:bookId", authenticate, async (req, res) => {
     );
     if (!book) throw new Error("No available copies");
 
-    // ⏰ Expire after 2 hours
     const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
 
     const [reservation] = await Reservation.create(
