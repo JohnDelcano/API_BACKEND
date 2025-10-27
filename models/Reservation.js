@@ -1,4 +1,3 @@
-// Use ES module imports
 import mongoose from "mongoose";
 
 const { Schema } = mongoose;
@@ -17,7 +16,15 @@ const reservationSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["reserved", "borrowed", "expired", "cancelled", "approved", "declined"],
+      enum: [
+        "reserved",
+        "borrowed",
+        "expired",
+        "cancelled",
+        "approved",
+        "declined",
+        "completed", // Added 'completed' to enum
+      ],
       default: "reserved",
     },
     reservedAt: {
@@ -37,10 +44,9 @@ const reservationSchema = new Schema(
       default: 0,
     },
     reminderSent: {
-  type: Boolean,
-  default: false,
-},
-
+      type: Boolean,
+      default: false,
+    },
     metadata: {
       type: Object,
       default: {},
@@ -55,4 +61,4 @@ const reservationSchema = new Schema(
 reservationSchema.index({ studentId: 1, status: 1 }); // fast lookup for active reservations
 reservationSchema.index({ expiresAt: 1 }); // for expiry job
 
-export default mongoose.models.Reservation || mongoose.model("Reservation", reservationSchema)
+export default mongoose.models.Reservation || mongoose.model("Reservation", reservationSchema);
