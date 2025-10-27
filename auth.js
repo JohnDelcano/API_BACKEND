@@ -3,7 +3,10 @@ import jwt from "jsonwebtoken";
 import Student from "./models/Student.js";
 import Admin from "./models/Admin.js";
 
+// ✅ Use one shared secret
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 
+// -------------------- Student Auth --------------------
 export async function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
@@ -11,14 +14,13 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ success: false, error: "No token provided" });
     }
 
-    const token = jwt.sign(
-  { id: student._id },
-  process.env.JWT_SECRET || "dev_secret", // ✅ match verify() behavior
-  { expiresIn: "7d" }
-);
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
     const student = await Student.findById(decoded.id);
-    if (!student) return res.status(401).json({ success: false, error: "User not found" });
+    if (!student) {
+      return res.status(401).json({ success: false, error: "User not found" });
+    }
 
     req.user = student;
     next();
@@ -27,10 +29,7 @@ export async function authenticate(req, res, next) {
   }
 }
 
-
-/* ------------------------------------------
-   🧑‍💼 Admin Authentication Middleware
------------------------------------------- */
+// -------------------- Admin Auth --------------------
 export async function authenticateAdmin(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
@@ -39,7 +38,7 @@ export async function authenticateAdmin(req, res, next) {
     }
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     const admin = await Admin.findById(decoded.id);
     if (!admin) {
