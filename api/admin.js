@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Admin from "../models/Admin.js";
 import { syncBookCounts } from "./utils/syncBookCounts.js"; // ⬅️ import our utility
-import { authenticate } from "../../auth.js"; // optional: add admin authentication middleware
+import { authenticateAdmin } from "../auth.js"; // optional: add admin authentication middleware
 
 const router = express.Router();
 
