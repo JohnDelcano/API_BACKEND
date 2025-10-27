@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import Student from "../models/Student.js";
+import Student from "./models/Student.js";
 
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
