@@ -217,6 +217,63 @@ router.delete("/:id", authenticate, async (req, res) => {
   }
 });
 
+
+// POST /api/reservation
+const createReservation = async (req, res) => {
+  try {
+    const { bookId, expiresAt } = req.body;
+    const studentId = req.user.id;
+
+    // ✅ STEP 1: Check for active reservation
+    const existingReservation = await Reservation.findOne({
+      bookId,
+      studentId,
+      status: { $in: ["reserved", "approved", "borrowed"] }, // Only block active ones
+    });
+
+    if (existingReservation) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have an active reservation for this book.",
+      });
+    }
+
+    // ✅ STEP 2: Check book availability
+    const book = await Book.findById(bookId);
+    if (!book || book.availableCount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Book is not available for reservation.",
+      });
+    }
+
+    // ✅ STEP 3: Create new reservation
+    const reservation = new Reservation({
+      bookId,
+      studentId,
+      expiresAt,
+      status: "reserved",
+    });
+
+    await reservation.save();
+
+    // ✅ STEP 4: Update book counts
+    book.availableCount -= 1;
+    book.reservedCount += 1;
+    await book.save();
+
+    return res.status(201).json({
+      success: true,
+      reservation,
+    });
+  } catch (err) {
+    console.error("Reservation creation failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+};
 /* ---------------------------------------
    ✏ PATCH /api/reservation/:id/status
    Update status (approve / decline / returned / lost)

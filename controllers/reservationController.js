@@ -4,46 +4,60 @@ import Book from "../models/Book.js";
 // ================================
 //  CREATE RESERVATION
 // ================================
-export const createReservation = async (req, res) => {
+// POST /api/reservation
+const createReservation = async (req, res) => {
   try {
-    const studentId = req.user.id; // comes from auth middleware
-    const { id: bookId } = req.params;
+    const { bookId, expiresAt } = req.body;
+    const studentId = req.user.id;
 
-    // Set expiry time for 2 hours
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
-
-    // Prevent duplicate reservations
-    const existing = await Reservation.findOne({
-      studentId,
+    // ✅ STEP 1: Check for active reservation
+    const existingReservation = await Reservation.findOne({
       bookId,
-      status: { $in: ["reserved", "approved", "borrowed"] },
+      studentId,
+      status: { $in: ["reserved", "approved", "borrowed"] }, // Only block active ones
     });
 
-    if (existing)
-      return res
-        .status(400)
-        .json({ error: "You already have an active reservation for this book." });
+    if (existingReservation) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have an active reservation for this book.",
+      });
+    }
 
-    const reservation = await Reservation.create({
-      studentId,
+    // ✅ STEP 2: Check book availability
+    const book = await Book.findById(bookId);
+    if (!book || book.availableCount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Book is not available for reservation.",
+      });
+    }
+
+    // ✅ STEP 3: Create new reservation
+    const reservation = new Reservation({
       bookId,
-      status: "reserved",
+      studentId,
       expiresAt,
+      status: "reserved",
     });
 
-    await Book.findByIdAndUpdate(bookId, {
-      $inc: { availableCount: -1, reservedCount: 1 },
-      status: "Reserved",
+    await reservation.save();
+
+    // ✅ STEP 4: Update book counts
+    book.availableCount -= 1;
+    book.reservedCount += 1;
+    await book.save();
+
+    return res.status(201).json({
+      success: true,
+      reservation,
     });
-
-    // ✅ Emit Socket.IO event for real-time update
-    req.io.emit("reservationUpdated", reservation);
-
-    res.status(201).json({ reservation });
   } catch (err) {
-    console.error("❌ Create reservation error:", err);
-    res.status(500).json({ error: "Failed to create reservation." });
+    console.error("Reservation creation failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
   }
 };
 
