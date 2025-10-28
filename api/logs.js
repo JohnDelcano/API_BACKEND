@@ -8,16 +8,17 @@ const router = express.Router();
 // GET all logs
 router.get("/", async (req, res) => {
   try {
+    console.log("Fetching logs...");  // Log to check if route is hit
     const logs = await Log.find()
       .populate("student", "studentId firstName lastName")
       .sort({ timeIn: -1 });
 
     res.json({ success: true, data: logs });
   } catch (err) {
+    console.error("Error in /api/logs:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 
 // TIME IN
