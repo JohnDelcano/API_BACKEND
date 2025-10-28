@@ -98,28 +98,29 @@ router.get("/", async (req, res) => {
 });
 
 // Example: Admin marks the book as returned/completed
+// Admin marks the book as returned/completed
 router.patch("/book/:bookId/status", authenticate, async (req, res) => {
   const { bookId } = req.params;
-  const { status } = req.body; // "returned" or "completed"
+  const { status } = req.body;
 
   try {
     const book = await Book.findById(bookId);
     if (!book) return res.status(404).json({ error: "Book not found" });
 
-    // Update book status and availability
+    // Update book status when returned/completed
     if (status === "returned" || status === "completed") {
       book.status = "Available";
-      book.availableCount += 1;
-      book.reservedCount -= 1;
+      book.availableCount += 1;  // Increment available count
+      book.reservedCount -= 1;   // Decrease reserved count
     }
+
     await book.save();
 
     // Emit event to notify frontend
-    io.emit("bookStatusUpdated", bookId);
+    io.emit("bookStatusUpdated", bookId);  // Notify frontend
 
     res.json({ success: true, message: "Book status updated", book });
   } catch (err) {
-    console.error("Error updating book status:", err);
     res.status(500).json({ error: "Failed to update book status" });
   }
 });
