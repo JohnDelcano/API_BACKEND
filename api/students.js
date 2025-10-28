@@ -43,6 +43,43 @@ router.get("/recommended", async (req, res) => {
   }
 });
 
+
+
+// Example: Admin approves a reservation
+router.patch("/approve/:reservationId", authenticate, async (req, res) => {
+  const { reservationId } = req.params;
+
+  try {
+    const reservation = await Reservation.findById(reservationId).populate('student book');
+    if (!reservation) return res.status(404).json({ error: "Reservation not found" });
+
+    const student = reservation.student;
+    const book = reservation.book;
+
+    // Mark reservation as approved
+    reservation.status = "approved";
+    await reservation.save();
+
+    // Increment activeReservations for the student
+    student.activeReservations += 1;
+    await student.save();
+
+    // Mark the book as borrowed
+    book.status = "borrowed";
+    book.availableCount -= 1;
+    book.reservedCount += 1;
+    await book.save();
+
+    // Emit event to notify frontend about the approval
+    io.emit("reservationApproved", { reservationId, studentId: student._id });
+
+    res.json({ success: true, message: "Reservation approved", reservation });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to approve reservation" });
+  }
+});
+
+
 // ---------------------------
 // VERIFY STUDENT (Admin Action)
 // ---------------------------
@@ -99,6 +136,7 @@ router.get("/", async (req, res) => {
 
 // Example: Admin marks the book as returned/completed
 // Admin marks the book as returned/completed
+// Admin marks the book as returned/completed
 router.patch("/book/:bookId/status", authenticate, async (req, res) => {
   const { bookId } = req.params;
   const { status } = req.body;
@@ -107,17 +145,28 @@ router.patch("/book/:bookId/status", authenticate, async (req, res) => {
     const book = await Book.findById(bookId);
     if (!book) return res.status(404).json({ error: "Book not found" });
 
+    let student;
+
     // Update book status when returned/completed
     if (status === "returned" || status === "completed") {
+      // Reset book status to "Available"
       book.status = "Available";
       book.availableCount += 1;  // Increment available count
       book.reservedCount -= 1;   // Decrease reserved count
+
+      // Find the student who had the reservation and update activeReservations
+      student = await Student.findOne({ activeReservations: { $gt: 0 } }).where('reservations.bookId').equals(bookId);
+      if (student) {
+        // Decrease active reservations by 1 for the student who had the reservation
+        student.activeReservations -= 1;
+        await student.save();
+      }
     }
 
     await book.save();
 
-    // Emit event to notify frontend
-    io.emit("bookStatusUpdated", bookId);  // Notify frontend
+    // Emit event to notify frontend (book status updated)
+    io.emit("bookStatusUpdated", { bookId, studentId: student?._id });
 
     res.json({ success: true, message: "Book status updated", book });
   } catch (err) {
