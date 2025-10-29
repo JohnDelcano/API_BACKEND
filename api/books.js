@@ -185,16 +185,26 @@ async function handleUpdate(req, res) {
       picture: pictureUrl,
     };
 
+    // adjust available count if quantity changes
     if (quantity && quantity !== existingBook.quantity) {
       const diff = quantity - existingBook.quantity;
       update.availableCount = (existingBook.availableCount || 0) + diff;
-
-      if (update.availableCount > 0) {
-    update.status = "Available";
-  }
-  
     }
-     
+
+    // ✅ recompute status based on counts
+    const bookCounts = {
+      availableCount: update.availableCount ?? existingBook.availableCount,
+      reservedCount: existingBook.reservedCount,
+      borrowedCount: existingBook.borrowedCount,
+      lostCount: existingBook.lostCount,
+    };
+
+    update.status =
+      bookCounts.lostCount > 0 ? "Lost" :
+      bookCounts.borrowedCount > 0 ? "Borrowed" :
+      bookCounts.reservedCount > 0 ? "Reserved" :
+      bookCounts.availableCount > 0 ? "Available" :
+      "Reserved";
 
     const updatedBook = await Book.findByIdAndUpdate(id, update, { new: true });
     res.json({ message: "Book updated successfully!", book: updatedBook });
@@ -203,6 +213,7 @@ async function handleUpdate(req, res) {
     res.status(500).json({ message: "Error updating book", error: error.message });
   }
 }
+
 
 // ---------------------------
 // GET single book by ID
