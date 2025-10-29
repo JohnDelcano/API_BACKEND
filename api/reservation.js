@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import Book from "../models/Book.js";
 import Student from "../models/Student.js";
 import Reservation from "../models/Reservation.js";
-import { authenticate } from "../auth.js";
+import { authenticate, authenticateAdmin } from "../auth.js";
 
 const router = express.Router();
 
@@ -364,7 +364,6 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
-
 
 /* ---------------------------------------
    🧾 GET /api/reservation/admin/all
