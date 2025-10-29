@@ -4,12 +4,12 @@ const { Schema } = mongoose;
 
 const reservationSchema = new Schema(
   {
-    bookId: {
+    book: {
       type: Schema.Types.ObjectId,
       ref: "Book",
       required: true,
     },
-    studentId: {
+    student: {
       type: Schema.Types.ObjectId,
       ref: "Student",
       required: true,
