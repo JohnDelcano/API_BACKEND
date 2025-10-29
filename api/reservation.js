@@ -130,7 +130,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
     if (txnStarted) await session.commitTransaction();
     session.endSession();
 
-    io.to(studentDoc._id.toString()).emit("reservationUpdated", reservation.toObject());
+    io.to(studentDoc._id.toString()).emit("reservationCreated", reservation.toObject());
     io.to("admins").emit("adminReservationUpdated", reservation.toObject());
 
     res.status(201).json({
@@ -138,6 +138,17 @@ router.post("/:bookId", authenticate, async (req, res) => {
       message: "Book reserved successfully.",
       reservation,
     });
+
+    res.status(201).json({
+    success: true,
+    message: "Book reserved successfully.",
+    reservation: {
+    ...reservation.toObject(),
+      status: "reserved", // ensure consistency
+    expiresAt: reservation.expiresAt || new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000),
+    },
+  });
+
   } catch (err) {
     console.error("❌ Reservation failed:", err);
     res.status(400).json({ success: false, error: err.message || "Reservation failed" });
