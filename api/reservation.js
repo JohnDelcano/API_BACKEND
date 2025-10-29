@@ -213,7 +213,7 @@ router.get("/admin/all", async (req, res) => {
 
     const formatted = reservations.map((r) => ({
       _id: r._id,
-      student: r.studentId
+      studentId: r.studentId
         ? {
             _id: r.studentId._id,
             studentId: r.studentId.studentId,
@@ -221,7 +221,7 @@ router.get("/admin/all", async (req, res) => {
             lastName: r.studentId.lastName,
           }
         : { _id: null, studentId: "-", firstName: "Deleted", lastName: "" },
-      book: r.bookId
+      bookId: r.bookId
         ? { _id: r.bookId._id, title: r.bookId.title }
         : { _id: null, title: "Deleted" },
       reservedAt: r.reservedAt,
