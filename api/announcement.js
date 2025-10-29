@@ -31,4 +31,30 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Update Announcement
+router.put("/:id", async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    const updated = await Announcement.findByIdAndUpdate(
+      req.params.id,
+      { title, content },
+      { new: true }
+    );
+    res.json({ message: "Announcement updated", announcement: updated });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating announcement", error });
+  }
+});
+
+// Delete Announcement
+router.delete("/:id", async (req, res) => {
+  try {
+    await Announcement.findByIdAndDelete(req.params.id);
+    res.json({ message: "Announcement deleted" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting announcement", error });
+  }
+});
+
+
 export default router;
