@@ -128,7 +128,6 @@ router.post("/:bookId", authenticate, async (req, res) => {
       .populate("studentId", "studentId firstName lastName")
       .populate("bookId", "title");
 
-    // 🔔 Real-time notifications
     io.to(studentDoc._id.toString()).emit("reservationCreated", populated.toObject());
     io.to("admins").emit("reservationCreated", populated.toObject());
 
@@ -168,6 +167,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
       const book = await Book.findById(reservation.bookId._id);
       if (book) {
         book.availableCount += 1;
+        book.reservedCount = Math.max(0, book.reservedCount - 1);
         book.status = "Available";
         await book.save();
       }
@@ -183,6 +183,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
       const book = await Book.findById(reservation.bookId._id);
       if (book) {
         book.availableCount += 1;
+        book.reservedCount = Math.max(0, book.reservedCount - 1);
         book.status = "Available";
         await book.save();
       }
