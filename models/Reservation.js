@@ -23,7 +23,8 @@ const reservationSchema = new Schema(
         "cancelled",
         "approved",
         "declined",
-        "completed", // Added 'completed' to enum
+        "completed",
+        "returned", // Added 'completed' to enum
       ],
       default: "reserved",
     },
