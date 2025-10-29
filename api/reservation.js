@@ -147,6 +147,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
 --------------------------------------- */
 router.patch("/:id/status", authenticateAdmin, async (req, res) => {
   try {
+    const io = req.app.get("io");
     const { id } = req.params;
     const { status } = req.body;
 
@@ -214,15 +215,17 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 
   if (studentIdStr) {
     io.to(studentIdStr).emit("reservationCancelled", reservation);
+    io.to(studentIdStr).emit("reservationUpdated", reservation);
   }
 
   io.to("admins").emit("reservationCancelled", reservation);
+  io.to("admins").emit("reservationUpdated", reservation);
 }
 
 
     await reservation.save();
 
-    const io = req.app.get("io");
+    
 
     const studentIdStr =
       typeof reservation.studentId === "object"
@@ -243,58 +246,39 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 });
 
 
-// Cancel reservation
 router.delete("/:id", authenticate, async (req, res) => {
   try {
+    const io = req.app.get("io"); // ✅ must be at the top
+
     const reservation = await Reservation.findById(req.params.id);
-
-    if (!reservation) {
-      return res.status(404).json({ error: "Reservation not found" });
-    }
-
-    // 🧠 Only the owner can cancel
-    if (reservation.studentId?.toString() !== req.user.id) {
-      return res.status(403).json({ error: "Not authorized to cancel this reservation" });
-    }
-
-    // ❌ Can't cancel if already borrowed or finished
-    if (["approved", "returned", "completed"].includes(reservation.status)) {
-      return res.status(400).json({ error: "This reservation cannot be cancelled." });
-    }
+    if (!reservation) return res.status(404).json({ error: "Reservation not found" });
+    if (reservation.studentId?.toString() !== req.user.id)
+      return res.status(403).json({ error: "Not authorized" });
+    if (["approved", "returned", "completed"].includes(reservation.status))
+      return res.status(400).json({ error: "Cannot cancel this reservation" });
 
     reservation.status = "cancelled";
     await reservation.save();
 
-    // 🟢 Update book counts
-    await Book.findByIdAndUpdate(reservation.bookId, {
-      $inc: { reservedCount: -1, availableCount: 1 },
-      status: "Available",
-    });
+    const updatedBook = await Book.findByIdAndUpdate(
+      reservation.bookId,
+      {
+        $inc: { reservedCount: -1, availableCount: 1 },
+        status: "Available",
+      },
+      { new: true }
+    );
 
-    // 🟢 Update book counts
-const updatedBook = await Book.findByIdAndUpdate(
-  reservation.bookId,
-  {
-    $inc: { reservedCount: -1, availableCount: 1 },
-    status: "Available",
-  },
-  { new: true }
-);
+    // ✅ Emit book and reservation updates
+    if (updatedBook) {
+      io.emit("bookStatusUpdated", {
+        bookId: updatedBook._id,
+        availableCount: updatedBook.availableCount,
+        reservedCount: updatedBook.reservedCount,
+        status: updatedBook.status,
+      });
+    }
 
-// 🟢 Emit book status update
-if (updatedBook) {
-  io.emit("bookStatusUpdated", {
-    bookId: updatedBook._id,
-    availableCount: updatedBook.availableCount,
-    reservedCount: updatedBook.reservedCount,
-    status: updatedBook.status,
-  });
-}
-
-
-    const io = req.app.get("io");
-
-    // 🧩 SAFER EMIT FIX
     const studentIdStr =
       typeof reservation.studentId === "object"
         ? reservation.studentId._id?.toString()
@@ -303,7 +287,6 @@ if (updatedBook) {
     if (studentIdStr) {
       io.to(studentIdStr).emit("reservationCancelled", reservation);
     }
-
     io.to("admins").emit("reservationCancelled", reservation);
 
     res.json({ success: true });
@@ -312,6 +295,7 @@ if (updatedBook) {
     res.status(500).json({ error: "Failed to cancel reservation" });
   }
 });
+
 
 
 
