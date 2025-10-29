@@ -135,6 +135,15 @@ router.post("/:bookId", authenticate, async (req, res) => {
       status: populated.status,
     });
 
+    // After approval:
+io.to(reservation.studentId._id.toString()).emit("reservationApproved", reservation);
+
+// After return:
+io.to(reservation.studentId._id.toString()).emit("bookReturned", reservation);
+
+// After decline:
+io.to(reservation.studentId._id.toString()).emit("reservationCancelled", reservation);
+
     res.status(201).json({
       success: true,
       message: "Book reserved successfully.",
