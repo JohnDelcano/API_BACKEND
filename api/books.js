@@ -94,6 +94,9 @@ router.get("/category/:category", async (req, res) => {
 // ---------------------------
 // POST new book
 // ---------------------------
+// ---------------------------
+// POST new book
+// ---------------------------
 router.post("/", upload.single("picture"), async (req, res) => {
   try {
     let { book_id, title, author, quantity, quality, category } = req.body;
@@ -120,12 +123,21 @@ router.post("/", upload.single("picture"), async (req, res) => {
     });
 
     await newBook.save();
+
+    // 🔥 Notify all connected clients
+    const io = req.app.get("io");
+    io.emit("bookAdded", newBook);
+
     res.status(201).json({ message: "Book added successfully!", book: newBook });
   } catch (error) {
     res.status(500).json({ message: "Error adding book", error: error.message });
   }
 });
 
+
+// ---------------------------
+// DELETE a book
+// ---------------------------
 // ---------------------------
 // DELETE a book
 // ---------------------------
@@ -136,12 +148,17 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "Book not found" });
     }
 
+    // 🔥 Notify all clients
+    const io = req.app.get("io");
+    io.emit("bookDeleted", req.params.id);
+
     res.status(200).json({ success: true, message: "Book deleted successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Error deleting book", error: error.message });
   }
 });
+
 
 // ---------------------------
 // UPDATE a book (supports JSON + image upload)
@@ -207,6 +224,10 @@ async function handleUpdate(req, res) {
       "Reserved";
 
     const updatedBook = await Book.findByIdAndUpdate(id, update, { new: true });
+    // 🔥 Notify clients of update
+const io = req.app.get("io");
+io.emit("bookUpdated", updatedBook);
+
     res.json({ message: "Book updated successfully!", book: updatedBook });
   } catch (error) {
     console.error("Update error:", error);
