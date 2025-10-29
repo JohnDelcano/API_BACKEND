@@ -17,7 +17,12 @@ import { expireOldReservations } from "./api/utils/reservationExpiryJob.js";
 dotenv.config();
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: {
+    origin: "*", // or your Expo dev URL for tighter security
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+  },
+});
 
 // Make io accessible in routes
 app.set("io", io);
