@@ -129,7 +129,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
 
     // 🔔 Real-time notifications
     io.to(studentDoc._id.toString()).emit("reservationCreated", populated.toObject());
-    io.to("admins").emit("reservationUpdated", populated.toObject());
+    io.to("admins").emit("reservationCreated", populated.toObject());
 
     res.status(201).json({
       success: true,
