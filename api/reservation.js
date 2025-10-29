@@ -25,7 +25,7 @@ async function startSessionWithTxn() {
 }
 
 /* ---------------------------------------
-   🕒 Expire Old Reservations
+  🕒 Expire Old Reservations
 --------------------------------------- */
 export async function expireOldReservations(io) {
   const now = new Date();
@@ -55,7 +55,7 @@ export async function expireOldReservations(io) {
 }
 
 /* ---------------------------------------
-   📘 GET /api/reservation
+  📘 GET /api/reservation
 --------------------------------------- */
 router.get("/", authenticate, async (req, res) => {
   try {
@@ -71,7 +71,7 @@ router.get("/", authenticate, async (req, res) => {
 });
 
 /* ---------------------------------------
-   🟢 POST /api/reservation/:bookId
+  🟢 POST /api/reservation/:bookId
 --------------------------------------- */
 router.post("/:bookId", authenticate, async (req, res) => {
   const student = req.user;
@@ -143,7 +143,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
 });
 
 /* ---------------------------------------
-   ✏ PATCH /api/reservation/:id/status
+  ✏ PATCH /api/reservation/:id/status
 --------------------------------------- */
 router.patch("/:id/status", authenticateAdmin, async (req, res) => {
   try {
@@ -165,74 +165,85 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     }
 
     if (status === "returned") {
-  const book = await Book.findById(reservation.bookId._id);
-  if (book) {
-    book.availableCount += 1;
-    book.reservedCount = Math.max(0, book.reservedCount - 1);
-    book.status = book.availableCount > 0 ? "Available" : "Not Available";
-    await book.save();
+      const book = await Book.findById(reservation.bookId._id);
+      if (book) {
+        book.availableCount += 1;
+        book.reservedCount = Math.max(0, book.reservedCount - 1);
+        book.status = book.availableCount > 0 ? "Available" : "Not Available";
+        await book.save();
 
-    // 🟢 Emit book status update
-    io.emit("bookStatusUpdated", {
-      bookId: book._id,
-      availableCount: book.availableCount,
-      reservedCount: book.reservedCount,
-      status: book.status,
-    });
-  }
+        // 🟢 Emit book status update
+        io.emit("bookStatusUpdated", {
+          bookId: book._id,
+          availableCount: book.availableCount,
+          reservedCount: book.reservedCount,
+          status: book.status,
+        });
+      }
 
-  const student = await Student.findById(reservation.studentId._id);
-  if (student && student.activeReservations > 0) {
-    student.activeReservations -= 1;
-    await student.save();
-  }
-}
+      const student = await Student.findById(reservation.studentId._id);
+      if (student && student.activeReservations > 0) {
+        student.activeReservations -= 1;
+        await student.save();
+      }
+      
+      // ✅ FIX: Notify the student that the reservation was updated (returned)
+      const studentIdStr =
+        typeof reservation.studentId === "object"
+          ? reservation.studentId._id?.toString()
+          : reservation.studentId?.toString();
+
+      if (studentIdStr) {
+        io.to(studentIdStr).emit("reservationUpdated", reservation);
+      }
+      // END FIX
+    }
 
 
+    if (status === "declined") {
+      const book = await Book.findById(reservation.bookId._id);
+      if (book) {
+        book.availableCount += 1;
+        book.reservedCount = Math.max(0, book.reservedCount - 1);
+        book.status = book.availableCount > 0 ? "Available" : "Not Available";
+        await book.save();
 
-   if (status === "declined") {
-  const book = await Book.findById(reservation.bookId._id);
-  if (book) {
-    book.availableCount += 1;
-    book.reservedCount = Math.max(0, book.reservedCount - 1);
-    book.status = book.availableCount > 0 ? "Available" : "Not Available";
-    await book.save();
+        // 🟢 Notify clients that book is now available again
+        io.emit("bookStatusUpdated", {
+          bookId: book._id,
+          availableCount: book.availableCount,
+          reservedCount: book.reservedCount,
+          status: book.status,
+        });
+      }
 
-    // 🟢 Notify clients that book is now available again
-    io.emit("bookStatusUpdated", {
-      bookId: book._id,
-      availableCount: book.availableCount,
-      reservedCount: book.reservedCount,
-      status: book.status,
-    });
-  }
+      // 🔔 Notify both admin and user that reservation was cancelled
+      const studentIdStr =
+        typeof reservation.studentId === "object"
+          ? reservation.studentId._id?.toString()
+          : reservation.studentId?.toString();
 
-  // 🔔 Notify both admin and user that reservation was cancelled
-  const studentIdStr =
-    typeof reservation.studentId === "object"
-      ? reservation.studentId._id?.toString()
-      : reservation.studentId?.toString();
+      if (studentIdStr) {
+        io.to(studentIdStr).emit("reservationCancelled", reservation);
+        io.to(studentIdStr).emit("reservationUpdated", reservation);
+      }
 
-  if (studentIdStr) {
-    io.to(studentIdStr).emit("reservationCancelled", reservation);
-    io.to(studentIdStr).emit("reservationUpdated", reservation);
-  }
-
-  io.to("admins").emit("reservationCancelled", reservation);
-  io.to("admins").emit("reservationUpdated", reservation);
-}
+      io.to("admins").emit("reservationCancelled", reservation);
+      io.to("admins").emit("reservationUpdated", reservation);
+    }
 
 
     await reservation.save();
 
-    
-
+    // This is the general update that covers 'approved' and any other simple status change.
     const studentIdStr =
       typeof reservation.studentId === "object"
         ? reservation.studentId._id?.toString()
         : reservation.studentId?.toString();
 
-    if (studentIdStr) {
+    // Since we now handle the 'returned' status specifically above, we should ensure
+    // we don't double-emit, but we'll leave it here to handle 'approved' and future simple statuses.
+    if (studentIdStr && status !== "returned") {
       io.to(studentIdStr).emit("reservationUpdated", reservation);
     }
 
@@ -248,7 +259,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 
 router.delete("/:id", authenticate, async (req, res) => {
   try {
-    const io = req.app.get("io"); // ✅ must be at the top
+    const io = req.app.get("io"); 
 
     const reservation = await Reservation.findById(req.params.id);
     if (!reservation) return res.status(404).json({ error: "Reservation not found" });
@@ -285,7 +296,9 @@ router.delete("/:id", authenticate, async (req, res) => {
         : reservation.studentId?.toString();
 
     if (studentIdStr) {
-      io.to(studentIdStr).emit("reservationCancelled", reservation);
+      // Notify user's other devices/sessions
+      io.to(studentIdStr).emit("reservationCancelled", reservation); 
+      io.to(studentIdStr).emit("reservationUpdated", reservation); // Added this for consistency
     }
     io.to("admins").emit("reservationCancelled", reservation);
 
@@ -300,7 +313,7 @@ router.delete("/:id", authenticate, async (req, res) => {
 
 
 /* ---------------------------------------
-   🧾 GET /api/reservation/admin/all
+  🧾 GET /api/reservation/admin/all
 --------------------------------------- */
 router.get("/admin/all", async (req, res) => {
   try {
@@ -334,7 +347,7 @@ router.get("/admin/all", async (req, res) => {
 });
 
 /* ---------------------------------------
-   👤 GET /api/reservation/my
+  👤 GET /api/reservation/my
 --------------------------------------- */
 router.get("/my", authenticate, async (req, res) => {
   try {
