@@ -47,8 +47,9 @@ export async function expireOldReservations(io) {
     resv.status = "expired";
     await resv.save();
 
+    // 🔔 Notify both student and admin in real-time
     io.to(resv.studentId.toString()).emit("reservationUpdated", resv.toObject());
-    io.to("admins").emit("adminReservationUpdated", resv.toObject());
+    io.to("admins").emit("reservationUpdated", resv.toObject());
   }
 }
 
@@ -60,6 +61,7 @@ router.get("/", authenticate, async (req, res) => {
     const reservations = await Reservation.find({ studentId: req.user._id })
       .populate("bookId", "title")
       .populate("studentId", "studentId firstName lastName");
+
     res.json({ success: true, reservations });
   } catch (err) {
     console.error(err);
@@ -124,17 +126,10 @@ router.post("/:bookId", authenticate, async (req, res) => {
     const populated = await Reservation.findById(reservation._id)
       .populate("studentId", "studentId firstName lastName")
       .populate("bookId", "title");
-      
 
+    // 🔔 Real-time notifications
     io.to(studentDoc._id.toString()).emit("reservationCreated", populated.toObject());
-    io.to("admins").emit("adminReservationUpdated", {
-      _id: populated._id,
-      student: populated.studentId,
-      book: populated.bookId,
-      reservedAt: populated.reservedAt,
-      dueDate: populated.dueDate,
-      status: populated.status,
-    });
+    io.to("admins").emit("reservationUpdated", populated.toObject());
 
     res.status(201).json({
       success: true,
@@ -155,7 +150,6 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // ✅ Fixed populate field names to match your schema
     const reservation = await Reservation.findById(id)
       .populate("bookId")
       .populate("studentId");
@@ -195,21 +189,11 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 
     const io = req.app.get("io");
 
-// Notify the student (real-time update)
-if (status === "approved") {
-  io.to(reservation.studentId._id.toString()).emit("reservationApproved", reservation);
-}
+    // 🔔 Notify the student
+    io.to(reservation.studentId._id.toString()).emit("reservationUpdated", reservation);
 
-if (status === "returned") {
-  io.to(reservation.studentId._id.toString()).emit("bookReturned", reservation);
-}
-
-if (status === "declined" || status === "cancelled") {
-  io.to(reservation.studentId._id.toString()).emit("reservationCancelled", reservation);
-}
-
-// Notify admins
-io.to("admins").emit("adminReservationUpdated", reservation);
+    // 🔔 Notify all admins
+    io.to("admins").emit("reservationUpdated", reservation);
 
     res.json({ success: true, reservation });
   } catch (err) {
@@ -252,6 +236,9 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
+/* ---------------------------------------
+   👤 GET /api/reservation/my
+--------------------------------------- */
 router.get("/my", authenticate, async (req, res) => {
   try {
     const studentId = req.user.id;
