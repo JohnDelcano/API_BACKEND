@@ -42,6 +42,7 @@ export async function expireOldReservations(io) {
 
     await Student.findByIdAndUpdate(resv.studentId, {
       $inc: { activeReservations: -1 },
+      status: "Available",
     });
 
     resv.status = "expired";
@@ -167,6 +168,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
       const book = await Book.findById(reservation.bookId._id);
       if (book) {
         book.availableCount += 1;
+        book.status = "Available";
         await book.save();
       }
 
@@ -181,6 +183,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
       const book = await Book.findById(reservation.bookId._id);
       if (book) {
         book.availableCount += 1;
+        book.status = "Available";
         await book.save();
       }
     }
@@ -234,6 +237,7 @@ router.delete("/:id", authenticate, async (req, res) => {
     // 🟢 Update book counts
     await Book.findByIdAndUpdate(reservation.bookId, {
       $inc: { reservedCount: -1, availableCount: 1 },
+      status: "Available",
     });
 
     const io = req.app.get("io");
