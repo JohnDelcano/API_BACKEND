@@ -236,4 +236,18 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
+router.get("/my", authenticate, async (req, res) => {
+  try {
+    const studentId = req.user.id;
+    const reservations = await Reservation.find({ studentId })
+      .populate("bookId")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, reservations });
+  } catch (err) {
+    console.error("❌ Fetch my reservations error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch reservations" });
+  }
+});
+
 export default router;
