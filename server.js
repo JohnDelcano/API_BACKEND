@@ -24,16 +24,21 @@ app.set("io", io);
 io.on("connection", (socket) => {
   console.log("🔌 New client connected");
 
-  // Client must emit "joinUser" after login
   socket.on("joinUser", (userId) => {
     socket.join(userId);
     console.log(`👤 User ${userId} joined their personal room`);
+  });
+
+  socket.on("joinAdmin", () => {
+    socket.join("admins");
+    console.log("🛠️ Admin joined the admin room");
   });
 
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected");
   });
 });
+
 
 export { io };
 app.use(cors());
