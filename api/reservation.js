@@ -189,10 +189,16 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 
     const io = req.app.get("io");
 
-    // 🔔 Notify the student
-    io.to(reservation.studentId._id.toString()).emit("reservationUpdated", reservation);
+    // 🧩 SAFER EMIT FIX — prevents “Cannot read properties of undefined (toString)”
+    const studentIdStr =
+      typeof reservation.studentId === "object"
+        ? reservation.studentId._id?.toString()
+        : reservation.studentId?.toString();
 
-    // 🔔 Notify all admins
+    if (studentIdStr) {
+      io.to(studentIdStr).emit("reservationUpdated", reservation);
+    }
+
     io.to("admins").emit("reservationUpdated", reservation);
 
     res.json({ success: true, reservation });
@@ -201,6 +207,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     res.status(500).json({ success: false, message: "Server error.", error: err.message });
   }
 });
+
 
 // Cancel reservation
 router.delete("/:id", authenticate, async (req, res) => {
@@ -212,7 +219,7 @@ router.delete("/:id", authenticate, async (req, res) => {
     }
 
     // 🧠 Only the owner can cancel
-    if (reservation.student.toString() !== req.user.id) {
+    if (reservation.studentId?.toString() !== req.user.id) {
       return res.status(403).json({ error: "Not authorized to cancel this reservation" });
     }
 
@@ -224,15 +231,24 @@ router.delete("/:id", authenticate, async (req, res) => {
     reservation.status = "cancelled";
     await reservation.save();
 
-    // 🟢 Update counts
+    // 🟢 Update book counts
     await Book.findByIdAndUpdate(reservation.bookId, {
       $inc: { reservedCount: -1, availableCount: 1 },
     });
 
-    // 🟢 Emit socket update
     const io = req.app.get("io");
+
+    // 🧩 SAFER EMIT FIX
+    const studentIdStr =
+      typeof reservation.studentId === "object"
+        ? reservation.studentId._id?.toString()
+        : reservation.studentId?.toString();
+
+    if (studentIdStr) {
+      io.to(studentIdStr).emit("reservationCancelled", reservation);
+    }
+
     io.to("admins").emit("reservationCancelled", reservation);
-    io.to(reservation.student.toString()).emit("reservationCancelled", reservation);
 
     res.json({ success: true });
   } catch (err) {
@@ -240,6 +256,7 @@ router.delete("/:id", authenticate, async (req, res) => {
     res.status(500).json({ error: "Failed to cancel reservation" });
   }
 });
+
 
 
 /* ---------------------------------------
