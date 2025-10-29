@@ -164,36 +164,66 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     }
 
     if (status === "returned") {
-      const book = await Book.findById(reservation.bookId._id);
-      if (book) {
-        book.availableCount += 1;
-        book.reservedCount = Math.max(0, book.reservedCount - 1);
-        book.status = "Available";
-        await book.save();
-      }
+  const book = await Book.findById(reservation.bookId._id);
+  if (book) {
+    book.availableCount += 1;
+    book.reservedCount = Math.max(0, book.reservedCount - 1);
+    book.status = book.availableCount > 0 ? "Available" : "Not Available";
+    await book.save();
 
-      const student = await Student.findById(reservation.studentId._id);
-      if (student && student.activeReservations > 0) {
-        student.activeReservations -= 1;
-        await student.save();
-      }
-    }
+    // 🟢 Emit book status update
+    io.emit("bookStatusUpdated", {
+      bookId: book._id,
+      availableCount: book.availableCount,
+      reservedCount: book.reservedCount,
+      status: book.status,
+    });
+  }
 
-    if (status === "declined") {
-      const book = await Book.findById(reservation.bookId._id);
-      if (book) {
-        book.availableCount += 1;
-        book.reservedCount = Math.max(0, book.reservedCount - 1);
-        book.status = "Available";
-        await book.save();
-      }
-    }
+  const student = await Student.findById(reservation.studentId._id);
+  if (student && student.activeReservations > 0) {
+    student.activeReservations -= 1;
+    await student.save();
+  }
+}
+
+
+
+   if (status === "declined") {
+  const book = await Book.findById(reservation.bookId._id);
+  if (book) {
+    book.availableCount += 1;
+    book.reservedCount = Math.max(0, book.reservedCount - 1);
+    book.status = book.availableCount > 0 ? "Available" : "Not Available";
+    await book.save();
+
+    // 🟢 Notify clients that book is now available again
+    io.emit("bookStatusUpdated", {
+      bookId: book._id,
+      availableCount: book.availableCount,
+      reservedCount: book.reservedCount,
+      status: book.status,
+    });
+  }
+
+  // 🔔 Notify both admin and user that reservation was cancelled
+  const studentIdStr =
+    typeof reservation.studentId === "object"
+      ? reservation.studentId._id?.toString()
+      : reservation.studentId?.toString();
+
+  if (studentIdStr) {
+    io.to(studentIdStr).emit("reservationCancelled", reservation);
+  }
+
+  io.to("admins").emit("reservationCancelled", reservation);
+}
+
 
     await reservation.save();
 
     const io = req.app.get("io");
 
-    // 🧩 SAFER EMIT FIX — prevents “Cannot read properties of undefined (toString)”
     const studentIdStr =
       typeof reservation.studentId === "object"
         ? reservation.studentId._id?.toString()
@@ -240,6 +270,27 @@ router.delete("/:id", authenticate, async (req, res) => {
       $inc: { reservedCount: -1, availableCount: 1 },
       status: "Available",
     });
+
+    // 🟢 Update book counts
+const updatedBook = await Book.findByIdAndUpdate(
+  reservation.bookId,
+  {
+    $inc: { reservedCount: -1, availableCount: 1 },
+    status: "Available",
+  },
+  { new: true }
+);
+
+// 🟢 Emit book status update
+if (updatedBook) {
+  io.emit("bookStatusUpdated", {
+    bookId: updatedBook._id,
+    availableCount: updatedBook.availableCount,
+    reservedCount: updatedBook.reservedCount,
+    status: updatedBook.status,
+  });
+}
+
 
     const io = req.app.get("io");
 
