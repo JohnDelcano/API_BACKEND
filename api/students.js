@@ -176,13 +176,13 @@ router.patch("/book/:bookId/status", authenticate, async (req, res) => {
 
 
 
-router.get("/recommended/genre/:genre", async (req, res) => {
+router.get("/recommended/category/:category", async (req, res) => {
   try {
-    const { genre } = req.params;
-    const books = await Book.find({ genre }).sort({ favoritesCount: -1 }).limit(10);
+    const { category } = req.params;
+    const books = await Book.find({ category }).sort({ favoritesCount: -1 }).limit(10);
     res.json({ success: true, data: books });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Error fetching recommended books by genre", error: err.message });
+    res.status(500).json({ success: false, message: "Error fetching recommended books by category", error: err.message });
   }
 });
 
@@ -387,7 +387,7 @@ router.post("/register", async (req, res) => {
     const {
       firstName, lastName, email, password,
       birthday, phone, address, schoolname,
-      guardian, guardianname, gender, genre, grade,
+      guardian, guardianname, gender, category, grade,
       profilePicture, validIDs
     } = req.body;
 
@@ -423,7 +423,7 @@ router.post("/register", async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
 
     // Parse optional fields
-    const parsedGenre = Array.isArray(genre) ? genre : JSON.parse(genre || "[]");
+    const parsedCategory = Array.isArray(category) ? category : JSON.parse(category || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
     // Create student
@@ -442,7 +442,7 @@ router.post("/register", async (req, res) => {
       guardian: guardian ? Number(guardian) : undefined,
       guardianname,
       gender,
-      genre: parsedGenre,
+      category: parsedCategory,
       grade
     });
 
@@ -556,11 +556,11 @@ router.put("/me", async (req, res) => {
     const student = await Student.findById(decoded.id);
     if (!student) return res.status(404).json({ success: false, message: "Student not found" });
 
-    const fields = ["firstName", "lastName", "birthday", "phone", "address", "schoolname", "guardian", "guardianname", "gender", "genre", "profilePicture", "grade"];
+    const fields = ["firstName", "lastName", "birthday", "phone", "address", "schoolname", "guardian", "guardianname", "gender", "category", "profilePicture", "grade"];
     fields.forEach(field => {
       if (req.body[field]) {
-        if (field === "genre") {
-          student.genre = Array.isArray(req.body.genre) ? req.body.genre : JSON.parse(req.body.genre || "[]");
+        if (field === "category") {
+          student.category = Array.isArray(req.body.category) ? req.body.category : JSON.parse(req.body.category || "[]");
         } else {
           student[field] = req.body[field];
         }

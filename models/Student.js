@@ -15,7 +15,7 @@ const studentSchema = new mongoose.Schema({
   guardian: { type: String },
   guardianname: { type: String },
   gender: { type: String },
-  genre: { type: [String], default: [] },
+  category: { type: [String], default: [] },
   grade: { type: String, required: true },
   favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
   activeReservations: { type: Number, default: 0 },
