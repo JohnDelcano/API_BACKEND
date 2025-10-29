@@ -202,6 +202,46 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
   }
 });
 
+// Cancel reservation
+router.delete("/:id", authenticate, async (req, res) => {
+  try {
+    const reservation = await Reservation.findById(req.params.id);
+
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found" });
+    }
+
+    // 🧠 Only the owner can cancel
+    if (reservation.student.toString() !== req.user.id) {
+      return res.status(403).json({ error: "Not authorized to cancel this reservation" });
+    }
+
+    // ❌ Can't cancel if already borrowed or finished
+    if (["approved", "returned", "completed"].includes(reservation.status)) {
+      return res.status(400).json({ error: "This reservation cannot be cancelled." });
+    }
+
+    reservation.status = "cancelled";
+    await reservation.save();
+
+    // 🟢 Update counts
+    await Book.findByIdAndUpdate(reservation.bookId, {
+      $inc: { reservedCount: -1, availableCount: 1 },
+    });
+
+    // 🟢 Emit socket update
+    const io = req.app.get("io");
+    io.to("admins").emit("reservationCancelled", reservation);
+    io.to(reservation.student.toString()).emit("reservationCancelled", reservation);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Cancel error:", err);
+    res.status(500).json({ error: "Failed to cancel reservation" });
+  }
+});
+
+
 /* ---------------------------------------
    🧾 GET /api/reservation/admin/all
 --------------------------------------- */
