@@ -116,6 +116,7 @@ router.post("/", upload.single("picture"), async (req, res) => {
       category: normalizedCategory,
       picture: pictureUrl,
       favoritesCount: 0,
+      status: "Available",
     });
 
     await newBook.save();
@@ -187,7 +188,13 @@ async function handleUpdate(req, res) {
     if (quantity && quantity !== existingBook.quantity) {
       const diff = quantity - existingBook.quantity;
       update.availableCount = (existingBook.availableCount || 0) + diff;
+
+      if (update.availableCount > 0) {
+    update.status = "Available";
+  }
+  
     }
+     
 
     const updatedBook = await Book.findByIdAndUpdate(id, update, { new: true });
     res.json({ message: "Book updated successfully!", book: updatedBook });
