@@ -40,15 +40,12 @@ router.get("/", async (req, res) => {
 
 router.get("/updates", async (req, res) => {
   try {
-    const books = await Book.find()
-      .sort({ updatedAt: -1 })
-      .limit(10); // latest 10 books
+    const books = await Book.find().sort({ updatedAt: -1 }).limit(10);
     res.json(books);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 
 // ---------------------------
 // GET recommended books (top favorites)
@@ -77,20 +74,20 @@ router.get("/random", async (req, res) => {
 });
 
 // ---------------------------
-// GET books by genre (normalized)
+// GET books by category
 // ---------------------------
-router.get("/genre/:genre", async (req, res) => {
+router.get("/category/:category", async (req, res) => {
   try {
-    let { genre } = req.params;
-    genre = genre.trim().toLowerCase();
+    let { category } = req.params;
+    category = category.trim().toLowerCase();
 
     const books = await Book.find({
-      genre: { $regex: `^${genre}$`, $options: "i" },
+      category: { $regex: `^${category}$`, $options: "i" },
     });
 
     res.status(200).json(books);
   } catch (error) {
-    res.status(500).json({ message: "Error getting books by genre", error: error.message });
+    res.status(500).json({ message: "Error getting books by category", error: error.message });
   }
 });
 
@@ -99,13 +96,13 @@ router.get("/genre/:genre", async (req, res) => {
 // ---------------------------
 router.post("/", upload.single("picture"), async (req, res) => {
   try {
-    let { book_id, title, author, quantity, quality, genre } = req.body;
+    let { book_id, title, author, quantity, quality, category } = req.body;
     const pictureUrl = req.file?.path ?? req.body.picture;
 
-    // Normalize genre
-    const normalizedGenre = Array.isArray(genre)
-      ? genre.map(g => g.trim().toLowerCase())
-      : genre?.trim().toLowerCase();
+    // Normalize category
+    const normalizedCategory = Array.isArray(category)
+      ? category.map(c => c.trim().toLowerCase())
+      : category?.trim().toLowerCase();
 
     const newBook = new Book({
       book_id,
@@ -116,7 +113,7 @@ router.post("/", upload.single("picture"), async (req, res) => {
       availableCount: quantity,
       reservedCount: 0,
       borrowedCount: 0,
-      genre: normalizedGenre,
+      category: normalizedCategory,
       picture: pictureUrl,
       favoritesCount: 0,
     });
@@ -148,8 +145,7 @@ router.delete("/:id", async (req, res) => {
 // ---------------------------
 // UPDATE a book (supports JSON + image upload)
 // ---------------------------
-router.put("/:id", async (req, res, next) => {
-  // If multipart form, let multer handle it
+router.put("/:id", async (req, res) => {
   if (req.headers["content-type"]?.startsWith("multipart/form-data")) {
     upload.single("picture")(req, res, (err) => {
       if (err) {
@@ -169,14 +165,14 @@ async function handleUpdate(req, res) {
     const existingBook = await Book.findById(id);
     if (!existingBook) return res.status(404).json({ message: "Book not found" });
 
-    const { book_id, title, author, quantity, quality, genre, picture } = req.body;
+    const { book_id, title, author, quantity, quality, category, picture } = req.body;
     const pictureUrl = req.file?.path ?? picture ?? existingBook.picture;
 
-    const normalizedGenre = genre
-      ? Array.isArray(genre)
-        ? genre.map((g) => g.trim().toLowerCase())
-        : genre.trim().toLowerCase()
-      : existingBook.genre;
+    const normalizedCategory = category
+      ? Array.isArray(category)
+        ? category.map((c) => c.trim().toLowerCase())
+        : category.trim().toLowerCase()
+      : existingBook.category;
 
     const update = {
       book_id: book_id ?? existingBook.book_id,
@@ -184,7 +180,7 @@ async function handleUpdate(req, res) {
       author: author ?? existingBook.author,
       quantity: quantity ?? existingBook.quantity,
       quality: quality ?? existingBook.quality,
-      genre: normalizedGenre,
+      category: normalizedCategory,
       picture: pictureUrl,
     };
 
@@ -200,8 +196,6 @@ async function handleUpdate(req, res) {
     res.status(500).json({ message: "Error updating book", error: error.message });
   }
 }
-
-
 
 // ---------------------------
 // GET single book by ID
