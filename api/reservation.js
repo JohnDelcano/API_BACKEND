@@ -124,6 +124,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
     const populated = await Reservation.findById(reservation._id)
       .populate("studentId", "studentId firstName lastName")
       .populate("bookId", "title");
+      
 
     io.to(studentDoc._id.toString()).emit("reservationCreated", populated.toObject());
     io.to("admins").emit("adminReservationUpdated", {
@@ -134,15 +135,6 @@ router.post("/:bookId", authenticate, async (req, res) => {
       dueDate: populated.dueDate,
       status: populated.status,
     });
-
-    // After approval:
-io.to(reservation.studentId._id.toString()).emit("reservationApproved", reservation);
-
-// After return:
-io.to(reservation.studentId._id.toString()).emit("bookReturned", reservation);
-
-// After decline:
-io.to(reservation.studentId._id.toString()).emit("reservationCancelled", reservation);
 
     res.status(201).json({
       success: true,
