@@ -202,7 +202,22 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     await reservation.save();
 
     const io = req.app.get("io");
-    io.to("admins").emit("adminReservationUpdated", reservation);
+
+// Notify the student (real-time update)
+if (status === "approved") {
+  io.to(reservation.studentId._id.toString()).emit("reservationApproved", reservation);
+}
+
+if (status === "returned") {
+  io.to(reservation.studentId._id.toString()).emit("bookReturned", reservation);
+}
+
+if (status === "declined" || status === "cancelled") {
+  io.to(reservation.studentId._id.toString()).emit("reservationCancelled", reservation);
+}
+
+// Notify admins
+io.to("admins").emit("adminReservationUpdated", reservation);
 
     res.json({ success: true, reservation });
   } catch (err) {
