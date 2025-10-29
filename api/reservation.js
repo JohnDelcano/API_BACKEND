@@ -352,8 +352,9 @@ router.get("/admin/all", async (req, res) => {
 router.get("/my", authenticate, async (req, res) => {
   try {
     const studentId = req.user.id;
+
     const reservations = await Reservation.find({ studentId })
-      .populate("bookId")
+      .populate("bookId", "_id title status availableCount reservedCount")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, reservations });
