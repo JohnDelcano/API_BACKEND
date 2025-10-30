@@ -104,6 +104,15 @@ router.post("/:bookId", authenticate, async (req, res) => {
       { $inc: { availableCount: -1, reservedCount: 1 }, status: "Reserved" },
       { new: true, session }
     );
+    if (book) {
+  io.emit("bookStatusUpdated", {
+    bookId: book._id,
+    availableCount: book.availableCount,
+    reservedCount: book.reservedCount,
+    status: book.status,
+  });
+}
+
     if (!book) throw new Error("No available copies.");
 
     const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
