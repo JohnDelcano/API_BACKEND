@@ -138,7 +138,9 @@ router.post("/:bookId", authenticate, async (req, res) => {
       .populate("bookId", "title");
 
     io.to(studentDoc._id.toString()).emit("reservationCreated", populated.toObject());
-    io.to("admins").emit("reservationCreated", populated.toObject());
+io.to(studentDoc._id.toString()).emit("reservationUpdated", populated.toObject());
+io.to("admins").emit("reservationCreated", populated.toObject());
+io.to("admins").emit("reservationUpdated", populated.toObject());
 
     res.status(201).json({
       success: true,
