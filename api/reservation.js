@@ -60,7 +60,7 @@ export async function expireOldReservations(io) {
 router.get("/", authenticate, async (req, res) => {
   try {
     const reservations = await Reservation.find({ studentId: req.user._id })
-      .populate("bookId", "title")
+      .populate("bookId", "title author picture status availableCount reservedCount")
       .populate("studentId", "studentId firstName lastName");
 
     res.json({ success: true, reservations });
@@ -69,6 +69,7 @@ router.get("/", authenticate, async (req, res) => {
     res.status(500).json({ success: false, error: "Failed to fetch reservations" });
   }
 });
+
 
 /* ---------------------------------------
   🟢 POST /api/reservation/:bookId
@@ -112,7 +113,6 @@ router.post("/:bookId", authenticate, async (req, res) => {
     status: book.status,
   });
 }
-
     if (!book) throw new Error("No available copies.");
 
     const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
@@ -285,7 +285,7 @@ router.delete("/:id", authenticate, async (req, res) => {
     const updatedBook = await Book.findByIdAndUpdate(
       reservation.bookId,
       {
-        $inc: { reservedCount: -1, availableCount: 1 },
+        $inc: { reservedCount: -1, availableCount: 1 }, 
         status: "Available",
       },
       { new: true }
@@ -300,19 +300,16 @@ router.delete("/:id", authenticate, async (req, res) => {
         status: updatedBook.status,
       });
     }
-
     const studentIdStr =
       typeof reservation.studentId === "object"
         ? reservation.studentId._id?.toString()
         : reservation.studentId?.toString();
-
     if (studentIdStr) {
       // Notify user's other devices/sessions
       io.to(studentIdStr).emit("reservationCancelled", reservation); 
       io.to(studentIdStr).emit("reservationUpdated", reservation); // Added this for consistency
     }
     io.to("admins").emit("reservationCancelled", reservation);
-
     res.json({ success: true });
   } catch (err) {
     console.error("❌ Cancel error:", err);
@@ -320,18 +317,30 @@ router.delete("/:id", authenticate, async (req, res) => {
   }
 });
 
+// ⚠️ ADMIN CLEANUP: Delete ALL reservations (use carefully!)
+router.delete("/admin/delete-all", authenticateAdmin, async (req, res) => {
+  try {
+    const result = await Reservation.deleteMany({});
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} reservations from database.`,
+    });
+  } catch (err) {
+    console.error("❌ Delete all reservations error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete reservations",
+      error: err.message,
+    });
+  }
+});
 
-
-
-/* ---------------------------------------
-  🧾 GET /api/reservation/admin/all
---------------------------------------- */
+  //🧾 GET /api/reservation/admin/all
 router.get("/admin/all", async (req, res) => {
   try {
     const reservations = await Reservation.find()
       .populate("studentId", "studentId firstName lastName")
-      .populate("bookId", "title");
-
+      .populate("bookId", "title author picture")
     const formatted = reservations.map((r) => ({
       _id: r._id,
       studentId: r.studentId
@@ -349,7 +358,6 @@ router.get("/admin/all", async (req, res) => {
       dueDate: r.dueDate,
       status: r.status,
     }));
-
     res.json({ success: true, reservations: formatted });
   } catch (err) {
     console.error(err);
@@ -357,22 +365,17 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
-/* ---------------------------------------
-  👤 GET /api/reservation/my
---------------------------------------- */
+  //👤 GET /api/reservation/my
 router.get("/my", authenticate, async (req, res) => {
   try {
     const studentId = req.user.id;
-
     const reservations = await Reservation.find({ studentId })
-      .populate("bookId", "_id title status availableCount reservedCount")
+      .populate("bookId", "_id title author picture status availableCount reservedCount")
       .sort({ createdAt: -1 });
-
     res.json({ success: true, reservations });
   } catch (err) {
     console.error("❌ Fetch my reservations error:", err);
     res.status(500).json({ success: false, message: "Failed to fetch reservations" });
   }
 });
-
 export default router;
