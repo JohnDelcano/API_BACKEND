@@ -175,9 +175,9 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     if (status === "approved") {
       // If a custom due date is provided, use that; otherwise, use the default (3 days)
       if (customDueDate) {
-        reservation.dueDate = new Date(customDueDate).toISOString();
+        reservation.dueDate = new Date(customDueDate).toISOString();  // Use custom due date
       } else {
-        reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();  // Default 3-day due date
       }
 
       const book = await Book.findById(reservation.bookId._id);
@@ -210,6 +210,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
     await reservation.save();
 
     io.to("admins").emit("reservationUpdated", reservation);
+
 
     res.json({ success: true, reservation });
   } catch (err) {
