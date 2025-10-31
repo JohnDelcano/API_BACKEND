@@ -135,7 +135,7 @@ router.post("/:bookId", authenticate, async (req, res) => {
 
     const populated = await Reservation.findById(reservation._id)
       .populate("studentId", "studentId firstName lastName")
-      .populate("bookId", "title");
+      .populate("bookId", "title author picture");
 
     io.to(studentDoc._id.toString()).emit("reservationCreated", populated.toObject());
     io.to(studentDoc._id.toString()).emit("reservationUpdated", populated.toObject());
@@ -369,26 +369,10 @@ router.delete("/admin/delete-all", authenticateAdmin, async (req, res) => {
 router.get("/admin/all", async (req, res) => {
   try {
     const reservations = await Reservation.find()
-      .populate("studentId", "studentId firstName lastName")
+      .populate("studentId", "studentId firstName lastName email phone gender grade schoolName guardianName guardianContact validId")
       .populate("bookId", "title author picture")
-    const formatted = reservations.map((r) => ({
-      _id: r._id,
-      studentId: r.studentId
-        ? {
-            _id: r.studentId._id,
-            studentId: r.studentId.studentId,
-            firstName: r.studentId.firstName,
-            lastName: r.studentId.lastName,
-          }
-        : { _id: null, studentId: "-", firstName: "Deleted", lastName: "" },
-      bookId: r.bookId
-        ? { _id: r.bookId._id, title: r.bookId.title }
-        : { _id: null, title: "Deleted" },
-      reservedAt: r.reservedAt,
-      dueDate: r.dueDate,
-      status: r.status,
-    }));
-    res.json({ success: true, reservations: formatted });
+      .sort({ reservedAt: -1 });
+    res.json({ success: true, reservations });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Failed to fetch reservations" });
