@@ -480,7 +480,7 @@ router.post("/register", async (req, res) => {
       email: emailLower,
       password: hash,
       profilePicture,
-      validIDs: [frontIdUrl, backIdUrl],
+      validIDs,
       birthday: birthdayDate,
       phone: phone ? Number(phone) : undefined,
       address,
