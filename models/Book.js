@@ -12,7 +12,7 @@ const bookSchema = new mongoose.Schema({
   picture: { type: String },
   status: {
     type: String,
-    enum: ["Available", "Reserved", "Borrowed", "Lost"],
+    enum: ["Available", "Reserved", "Borrowed", "Lost", "Not Available"],
     default: "Available",
   },
 }, { timestamps: true });
@@ -24,10 +24,10 @@ bookSchema.pre("save", function (next) {
     this.status = "Borrowed";
   } else if (this.reservedCount > 0) {
     this.status = "Reserved";
-  } else if (this.availableCount > 0) {
-    this.status = "Available";
+  } else if (this.availableCount === 0) {
+    this.status = "Not Available"; // Set to "Not Available" when no copies are available
   } else {
-    this.status = "Not Available";
+    this.status = "Available";
   }
   next();
 });
