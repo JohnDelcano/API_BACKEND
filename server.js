@@ -9,58 +9,73 @@ import bookRoutes from "./api/books.js";
 import announcementRoutes from "./api/announcement.js";
 import adminRoutes from "./api/admin.js";
 import studentRoutes from "./api/students.js";
-import reservationRoutes from "./api/reservation.js"; 
-import logRoutes from "./api/logs.js"
+import reservationRoutes from "./api/reservation.js";
+import logRoutes from "./api/logs.js";
 import { expireOldReservations } from "./api/utils/reservationExpiryJob.js";
 
-
 dotenv.config();
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // or your Expo dev URL for tighter security
+    origin: "*", // For production: replace with your frontend domain
     methods: ["GET", "POST", "PATCH", "DELETE"],
   },
 });
 
-// Make io accessible in routes
+// 🔗 Attach io instance to all routes
 app.set("io", io);
-io.on("connection", (socket) => {
-  console.log("🔌 New client connected");
 
+// ------------------ SOCKET.IO ------------------
+io.on("connection", (socket) => {
+  console.log("🔌 New client connected:", socket.id);
+
+  // 🧑 Join personal room when user connects (called from frontend)
   socket.on("joinUser", (userId) => {
+    if (!userId) return;
     socket.join(userId);
-    console.log(`👤 User ${userId} joined their personal room`);
+    console.log(`👤 User ${userId} joined personal room`);
   });
 
+  // 🧑‍💼 Join admin room
   socket.on("joinAdmin", () => {
     socket.join("admins");
-    console.log("🛠️ Admin joined the admin room");
+    console.log("🛠️ Admin joined admin room");
+  });
+
+  // 🧹 Optional: allow user to leave room (e.g. logout)
+  socket.on("leaveUser", (userId) => {
+    if (userId) {
+      socket.leave(userId);
+      console.log(`🚪 User ${userId} left their room`);
+    }
   });
 
   socket.on("disconnect", () => {
-    console.log("❌ Client disconnected");
+    console.log("❌ Client disconnected:", socket.id);
   });
 });
 
-
+// Expose io for modules
 export { io };
+
+// ------------------ MIDDLEWARE ------------------
 app.use(cors());
 app.use(express.json());
 
-// Default route for testing
+// Default route
 app.get("/", (req, res) => {
-  res.send("LIBROSYNC API is running 🚀");
+  res.send("📚 LIBROSYNC API is running 🚀");
 });
 
-// MongoDB connection
+// ------------------ DATABASE ------------------
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => console.log("✅ Connected to MongoDB Atlas"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// Use Routers
+// ------------------ ROUTES ------------------
 app.use("/api/books", bookRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/admin", adminRoutes);
@@ -68,13 +83,14 @@ app.use("/api/students", studentRoutes);
 app.use("/api/reservation", reservationRoutes);
 app.use("/api/logs", logRoutes);
 
-// Auto-expire reservations and send SMS reminders every 1 minute
+// ------------------ AUTO-EXPIRATION JOB ------------------
 setInterval(() => expireOldReservations(io), 60 * 1000);
 
-// 404 handler (must come after all routes)
+// ------------------ 404 HANDLER ------------------
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
+// ------------------ START SERVER ------------------
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
