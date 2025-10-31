@@ -369,7 +369,7 @@ router.delete("/admin/delete-all", authenticateAdmin, async (req, res) => {
 router.get("/admin/all", authenticateAdmin, async (req, res) => {
   try {
     const reservations = await Reservation.find()
-      .populate("studentId", "studentId firstName lastName email phone gender grade schoolName guardianName guardianContact validId")
+      .populate("studentId", "studentId firstName lastName email phone gender schoolname guardianname guardian validId")
       .populate("bookId", "title author picture")
       .sort({ reservedAt: -1 });
     res.json({ success: true, reservations });
