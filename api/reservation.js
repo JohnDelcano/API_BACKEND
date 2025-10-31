@@ -366,7 +366,7 @@ router.delete("/admin/delete-all", authenticateAdmin, async (req, res) => {
 });
 
   //🧾 GET /api/reservation/admin/all
-router.get("/admin/all", async (req, res) => {
+router.get("/admin/all", authenticateAdmin, async (req, res) => {
   try {
     const reservations = await Reservation.find()
       .populate("studentId", "studentId firstName lastName email phone gender grade schoolName guardianName guardianContact validId")
