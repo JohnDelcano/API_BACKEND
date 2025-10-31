@@ -171,45 +171,58 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 
     reservation.status = status;
 
-    // ✅ STATUS: APPROVED
     if (status === "approved") {
-      // If a custom due date is provided, use that; otherwise, use the default (3 days)
-      if (customDueDate) {
-        reservation.dueDate = new Date(customDueDate).toISOString();  // Use custom due date
-      } else {
-        reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();  // Default 3-day due date
-      }
+  // If a custom due date is provided, use that; otherwise, use the default (3 days)
+  if (customDueDate) {
+    reservation.dueDate = new Date(customDueDate).toISOString();  // Use custom due date
+  } else {
+    // Set a default due date (e.g., 3 days from the current date)
+    reservation.dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+  }
 
-      const book = await Book.findById(reservation.bookId._id);
-      if (book) {
-        book.reservedCount -= 1;
-        book.borrowedCount = (book.borrowedCount || 0) + 1;
-        book.status = book.availableCount > 0 ? "Available" : "Not Available";
-        await book.save();
+  // Update the book's status
+  const book = await Book.findById(reservation.bookId._id);
+  if (book) {
+    // Decrease reserved count as it's no longer just reserved
+    book.reservedCount -= 1;
 
-        io.emit("bookStatusUpdated", {
-          bookId: book._id,
-          availableCount: book.availableCount,
-          reservedCount: book.reservedCount,
-          borrowedCount: book.borrowedCount,
-          status: book.status,
-        });
-      }
+    // Increase borrowed count as it's now borrowed
+    book.borrowedCount = (book.borrowedCount || 0) + 1;
 
-      const student = await Student.findById(reservation.studentId._id);
-      if (student) {
-        student.activeReservations = (student.activeReservations || 0) + 1;
-        await student.save();
-      }
+    // Check if there are still available copies
+    book.status = book.availableCount > 0 ? "Available" : "Not Available";
 
-      const studentIdStr = reservation.studentId._id.toString();
-      io.to(studentIdStr).emit("reservationApproved", reservation);
-      io.to(studentIdStr).emit("reservationUpdated", reservation);
-    }
+    // Save updated book status and counts
+    await book.save();
 
-    await reservation.save();
+    // Emit real-time update for book status to all clients
+    io.emit("bookStatusUpdated", {
+      bookId: book._id,
+      availableCount: book.availableCount,
+      reservedCount: book.reservedCount,
+      borrowedCount: book.borrowedCount,
+      status: book.status,
+    });
+  }
 
-    io.to("admins").emit("reservationUpdated", reservation);
+  // Update the student's active reservations count
+  const student = await Student.findById(reservation.studentId._id);
+  if (student) {
+    student.activeReservations = (student.activeReservations || 0) + 1;
+    await student.save();
+  }
+
+  // Emit real-time update for reservation to the student
+  const studentIdStr = reservation.studentId._id.toString();
+  io.to(studentIdStr).emit("reservationApproved", reservation);
+  io.to(studentIdStr).emit("reservationUpdated", reservation);
+}
+
+await reservation.save();
+
+// Emit real-time update to admins about the updated reservation
+io.to("admins").emit("reservationUpdated", reservation);
+
 
 
     res.json({ success: true, reservation });
