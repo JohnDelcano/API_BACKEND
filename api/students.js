@@ -427,28 +427,7 @@ router.put("/me/password", async (req, res) => {
 });
 
 
-
-
-router.get("/:studentId/favorites", async (req, res) => {
-  const { studentId } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(studentId)) {
-    return res.status(400).json({ success: false, message: "Invalid student ID", favorites: [] });
-  }
-
-  try {
-    const student = await Student.findById(studentId).populate("favorites");
-    if (!student) return res.status(404).json({ success: false, message: "Student not found", favorites: [] });
-
-    res.json({ success: true, favorites: student.favorites || [] });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Error fetching favorites", error: err.message, favorites: [] });
-  }
-});
-
-// ---------------------------
 // AUTH & REGISTRATION
-// ---------------------------
 router.post("/register", async (req, res) => {
   try {
     const {
