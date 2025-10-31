@@ -80,9 +80,7 @@ router.patch("/approve/:reservationId", authenticate, async (req, res) => {
 });
 
 
-// ---------------------------
 // VERIFY STUDENT (Admin Action)
-// ---------------------------
 router.patch("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -117,10 +115,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 
-// ---------------------------
-// ---------------------------
 // GET ALL STUDENTS (for admin view)
-// ---------------------------
 router.get("/", async (req, res) => {
   try {
     const students = await Student.find().select("-password"); // exclude password for security
@@ -134,8 +129,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Example: Admin marks the book as returned/completed
-// Admin marks the book as returned/completed
+
 // Admin marks the book as returned/completed
 router.patch("/book/:bookId/status", authenticate, async (req, res) => {
   const { bookId } = req.params;
@@ -175,7 +169,6 @@ router.patch("/book/:bookId/status", authenticate, async (req, res) => {
 });
 
 
-
 router.get("/recommended/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
@@ -186,9 +179,8 @@ router.get("/recommended/category/:category", async (req, res) => {
   }
 });
 
-// ---------------------------
+
 // FAVORITES
-// ---------------------------
 router.put("/:studentId/favorites/:bookId", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -263,9 +255,8 @@ router.delete("/:studentId/favorites/:bookId", async (req, res) => {
   }
 });
 
-// ---------------------------
+
 // TOGGLE FAVORITE
-// ---------------------------
 router.post("/favorites/toggle", authenticate, async (req, res) => {
   try {
     const { bookId } = req.body;
@@ -278,32 +269,39 @@ router.post("/favorites/toggle", authenticate, async (req, res) => {
     const alreadyFav = student.favorites.some(f => f.toString() === bookId);
 
     if (alreadyFav) {
+      // 🔻 Remove favorite
       student.favorites = student.favorites.filter(f => f.toString() !== bookId);
       book.favoritesCount = Math.max(0, (book.favoritesCount || 0) - 1);
     } else {
+      // ❤️ Add favorite
       student.favorites.push(bookId);
       book.favoritesCount = (book.favoritesCount || 0) + 1;
     }
 
     await Promise.all([student.save(), book.save()]);
 
-    const updated = await student.populate("favorites", "title author picture status");
+    const updated = await student.populate("favorites", "title author picture category status");
 
-    res.json({ success: true, favorites: updated.favorites });
+    // 🔔 Real-time update (optional)
+    try {
+      const io = req.app.get("io");
+      if (io) io.to(student._id.toString()).emit("favoritesUpdated", updated.favorites);
+    } catch {}
+
+    return res.json({ success: true, favorites: updated.favorites });
   } catch (err) {
     console.error("❌ Toggle favorite error:", err);
-    res.status(500).json({ success: false, message: "Failed to toggle favorite" });
+    return res.status(500).json({ success: false, message: "Failed to toggle favorite" });
   }
 });
 
 
-// ---------------------------
 // MERGE GUEST FAVORITES
-// ---------------------------
 router.post("/:id/favorites/merge", authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const { favorites } = req.body;
+
     const student = await Student.findById(id);
     if (!student) return res.status(404).json({ success: false, message: "Student not found" });
 
@@ -311,19 +309,30 @@ router.post("/:id/favorites/merge", authenticate, async (req, res) => {
     student.favorites = merged;
 
     await student.save();
-    const updated = await student.populate("favorites", "title author picture status");
+    const updated = await student.populate("favorites", "title author picture category status");
 
-    res.json({ success: true, favorites: updated.favorites });
+    return res.json({ success: true, favorites: updated.favorites });
   } catch (err) {
     console.error("❌ Merge favorites error:", err);
-    res.status(500).json({ success: false, message: "Failed to merge favorites" });
+    return res.status(500).json({ success: false, message: "Failed to merge favorites" });
   }
 });
 
 
-// ---------------------------
+router.get("/:id/favorites", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const student = await Student.findById(id).populate("favorites", "title author picture category status");
+    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+
+    return res.json({ success: true, favorites: student.favorites });
+  } catch (err) {
+    console.error("❌ Fetch favorites error:", err);
+    return res.status(500).json({ success: false, message: "Failed to get favorites" });
+  }
+});
+
 // CHANGE EMAIL (with old email confirmation)
-// ---------------------------
 router.put("/me/email", async (req, res) => {
   try {
     const auth = req.headers.authorization;
