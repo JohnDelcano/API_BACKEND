@@ -393,7 +393,7 @@ router.get("/admin/all", async (req, res) => {
   //👤 GET /api/reservation/my
 router.get("/my", authenticate, async (req, res) => {
   try {
-    const studentId = req.user.id;
+    const studentId = req.user._id;
     const reservations = await Reservation.find({ studentId })
       .populate("bookId", "_id title author picture status availableCount reservedCount")
       .sort({ createdAt: -1 });
