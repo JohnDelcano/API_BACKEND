@@ -20,39 +20,83 @@ router.get("/", async (req, res) => {
 // ✅ TIME IN
 router.post("/timein", async (req, res) => {
   try {
-    const { studentId } = req.body;
-    const student = await Student.findOne({ studentId });
+    const { studentId, qrData } = req.body;
+
+    // Accept either manually typed studentId or scanned QR
+    const idToSearch = qrData || studentId;
+    if (!idToSearch)
+      return res.status(400).json({ success: false, message: "Student ID or QR code required" });
+
+    // Find student
+    const student = await Student.findOne({ studentId: idToSearch });
     if (!student)
       return res.status(404).json({ success: false, message: "Student not found" });
 
+    // 🛑 Check if student already timed in (no timeout yet)
+    const existingLog = await Log.findOne({ student: student._id, timeOut: null });
+    if (existingLog) {
+      return res.status(400).json({
+        success: false,
+        message: `${student.firstName} ${student.lastName} is already timed in.`,
+      });
+    }
+
+    // ✅ Create new log entry for time-in
     const log = new Log({ student: student._id });
     await log.save();
 
     const populatedLog = await log.populate("student", "studentId firstName lastName");
 
-    // 🔔 Emit to all connected clients
+    // 🔔 Emit update to connected clients (real-time)
     const io = req.app.get("io");
     io.emit("logUpdated", { type: "timein", log: populatedLog });
 
     res.json({ success: true, log: populatedLog });
   } catch (err) {
+    console.error("Time-in error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
+
+
 // ✅ TIME OUT
-router.post("/timeout/:logId", async (req, res) => {
+router.post("/timeout", async (req, res) => {
   try {
-    const { logId } = req.params;
-    const log = await Log.findById(logId).populate("student", "studentId firstName lastName");
+    const { logId, studentId, qrData } = req.body;
+
+    // If logId provided (admin selecting a record)
+    if (logId) {
+      const log = await Log.findById(logId).populate("student", "studentId firstName lastName");
+      if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+
+      log.timeOut = new Date();
+      log.status = "Checked Out";
+      await log.save();
+
+      const io = req.app.get("io");
+      io.emit("logUpdated", { type: "timeout", log });
+      return res.json({ success: true, log });
+    }
+
+    // If using studentId or QR
+    const idToSearch = qrData || studentId;
+    if (!idToSearch)
+      return res.status(400).json({ success: false, message: "Student ID or QR code required" });
+
+    const student = await Student.findOne({ studentId: idToSearch });
+    if (!student)
+      return res.status(404).json({ success: false, message: "Student not found" });
+
+    // Find the latest log of this student with no timeOut yet
+    const log = await Log.findOne({ student: student._id, timeOut: null }).sort({ timeIn: -1 });
     if (!log)
-      return res.status(404).json({ success: false, message: "Log not found" });
+      return res.status(404).json({ success: false, message: "No active time-in found" });
 
     log.timeOut = new Date();
     log.status = "Checked Out";
     await log.save();
 
-    // 🔔 Emit to all connected clients
     const io = req.app.get("io");
     io.emit("logUpdated", { type: "timeout", log });
 
@@ -61,5 +105,6 @@ router.post("/timeout/:logId", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 export default router;
