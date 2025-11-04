@@ -17,46 +17,57 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ TIME IN
-router.post("/timein", async (req, res) => {
-  try {
-    const { studentId, qrData } = req.body;
 
-    // Accept either manually typed studentId or scanned QR
+// ✅ TIME OUT
+router.post("/timeout", async (req, res) => {
+  try {
+    const { logId, studentId, qrData } = req.body;
+
+    const io = req.app.get("io");
+
+    // 🟢 CASE 1: Admin provides logId directly
+    if (logId) {
+      const log = await Log.findById(logId);
+      if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+
+      log.timeOut = new Date();
+      log.status = "Checked Out";
+      await log.save();
+
+      const populatedLog = await log.populate("student", "studentId firstName lastName");
+
+      io.emit("logUpdated", { type: "timeout", log: populatedLog });
+      return res.json({ success: true, log: populatedLog });
+    }
+
+    // 🟢 CASE 2: Student scans QR or enters studentId
     const idToSearch = qrData || studentId;
     if (!idToSearch)
       return res.status(400).json({ success: false, message: "Student ID or QR code required" });
 
-    // Find student
     const student = await Student.findOne({ studentId: idToSearch });
     if (!student)
       return res.status(404).json({ success: false, message: "Student not found" });
 
-    // 🛑 Check if student already timed in (no timeout yet)
-    const existingLog = await Log.findOne({ student: student._id, timeOut: null });
-    if (existingLog) {
-      return res.status(400).json({
-        success: false,
-        message: `${student.firstName} ${student.lastName} is already timed in.`,
-      });
-    }
+    // Find active log
+    const log = await Log.findOne({ student: student._id, timeOut: null }).sort({ timeIn: -1 });
+    if (!log)
+      return res.status(404).json({ success: false, message: "No active time-in found" });
 
-    // ✅ Create new log entry for time-in
-    const log = new Log({ student: student._id });
+    log.timeOut = new Date();
+    log.status = "Checked Out";
     await log.save();
 
     const populatedLog = await log.populate("student", "studentId firstName lastName");
 
-    // 🔔 Emit update to connected clients (real-time)
-    const io = req.app.get("io");
-    io.emit("logUpdated", { type: "timein", log: populatedLog });
-
+    io.emit("logUpdated", { type: "timeout", log: populatedLog });
     res.json({ success: true, log: populatedLog });
   } catch (err) {
-    console.error("Time-in error:", err);
+    console.error("Timeout error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 
 
