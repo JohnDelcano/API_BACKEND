@@ -32,10 +32,7 @@
   router.get("/", async (req, res) => {
     try {
       const books = await Book.find({ status: { $ne: "Lost" } });
-      res.status(200).json({
-        success: true,
-        data: books
-      });
+      res.status(200).json(books);
     } catch (error) {
       res.status(500).json({ message: "Error getting books", error: error.message });
     }
