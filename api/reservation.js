@@ -315,9 +315,13 @@ router.delete("/:id", authenticate, async (req, res) => {
 router.get("/admin/all", authenticateAdmin, async (req, res) => {
   try {
     const reservations = await Reservation.find()
-      .populate("studentId", "studentId firstName lastName email phone gender schoolname guardianname grade")
-      .populate("bookId", "title author picture")
-      .sort({ reservedAt: -1 });
+    .populate(
+      "studentId",
+      "studentId firstName lastName email phone gender schoolname guardian guardianname grade validIDs"
+    )
+    .populate("bookId", "title author picture")
+    .sort({ reservedAt: -1 });
+
 
     res.json({ success: true, reservations });
   } catch (err) {
