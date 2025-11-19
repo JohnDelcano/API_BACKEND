@@ -9,7 +9,6 @@ import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { io } from "../server.js";
 import { authenticate } from "../auth.js";
-import QRCode from "qrcode";
 
 const router = express.Router();
 
@@ -426,8 +425,7 @@ router.put("/me/password", async (req, res) => {
   }
 });
 
-
-// AUTH & REGISTRATION
+// REGISTER STUDENT (without QR code)
 router.post("/register", async (req, res) => {
   try {
     const {
@@ -472,17 +470,7 @@ router.post("/register", async (req, res) => {
     const parsedCategory = Array.isArray(category) ? category : JSON.parse(category || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
-    // Generate QR code for studentId
-    const qrData = `${studentId}`; // you can also encode JSON or secure link
-    const qrCodeDataUrl = await QRCode.toDataURL(qrData);
-
-    // Upload QR code to Cloudinary
-    const qrUpload = await cloudinary.uploader.upload(qrCodeDataUrl, {
-      folder: "students/qr",
-      public_id: `QR_${studentId}`,
-    });
-
-    // Create student
+    // Create student (no QR code)
     const student = new Student({
       studentId,
       firstName,
@@ -500,7 +488,7 @@ router.post("/register", async (req, res) => {
       gender,
       category: parsedCategory,
       grade,
-      qrCode: qrUpload.secure_url,
+      // qrCode field is removed
     });
 
     await student.save();
@@ -516,6 +504,7 @@ router.post("/register", async (req, res) => {
     res.status(500).json({ success: false, message: "Registration error", error: err.message });
   }
 });
+
 
 
 

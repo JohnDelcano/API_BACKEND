@@ -20,15 +20,13 @@ router.get("/", async (req, res) => {
 // ✅ TIME IN
 router.post("/timein", async (req, res) => {
   try {
-    const { studentId, qrData } = req.body;
+    const { studentId } = req.body;
 
-    // Accept either manually typed studentId or scanned QR
-    const idToSearch = qrData || studentId;
-    if (!idToSearch)
-      return res.status(400).json({ success: false, message: "Student ID or QR code required" });
+    if (!studentId)
+      return res.status(400).json({ success: false, message: "Student ID required" });
 
     // Find student
-    const student = await Student.findOne({ studentId: idToSearch });
+    const student = await Student.findOne({ studentId });
     if (!student)
       return res.status(404).json({ success: false, message: "Student not found" });
 
@@ -58,13 +56,10 @@ router.post("/timein", async (req, res) => {
   }
 });
 
-
-
 // ✅ TIME OUT
 router.post("/timeout", async (req, res) => {
   try {
-    const { logId, studentId, qrData } = req.body;
-
+    const { logId, studentId } = req.body;
     const io = req.app.get("io");
 
     // 🟢 CASE 1: Admin provides logId directly
@@ -77,17 +72,15 @@ router.post("/timeout", async (req, res) => {
       await log.save();
 
       const populatedLog = await log.populate("student", "studentId firstName lastName");
-
       io.emit("logUpdated", { type: "timeout", log: populatedLog });
       return res.json({ success: true, log: populatedLog });
     }
 
-    // 🟢 CASE 2: Student scans QR or enters studentId
-    const idToSearch = qrData || studentId;
-    if (!idToSearch)
-      return res.status(400).json({ success: false, message: "Student ID or QR code required" });
+    // 🟢 CASE 2: Student enters studentId
+    if (!studentId)
+      return res.status(400).json({ success: false, message: "Student ID required" });
 
-    const student = await Student.findOne({ studentId: idToSearch });
+    const student = await Student.findOne({ studentId });
     if (!student)
       return res.status(404).json({ success: false, message: "Student not found" });
 
@@ -101,15 +94,13 @@ router.post("/timeout", async (req, res) => {
     await log.save();
 
     const populatedLog = await log.populate("student", "studentId firstName lastName");
-
     io.emit("logUpdated", { type: "timeout", log: populatedLog });
+
     res.json({ success: true, log: populatedLog });
   } catch (err) {
     console.error("Timeout error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-
 
 export default router;

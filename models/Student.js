@@ -22,7 +22,6 @@ const studentSchema = new mongoose.Schema({
   cooldownUntil: { type: Date },
   resetPasswordToken: String,
   resetPasswordExpires: Date,
-  qrCode: { type: String },
   status: {
     type: String,
     enum: ["Pending", "Active", "Inactive", "Blocked"],
