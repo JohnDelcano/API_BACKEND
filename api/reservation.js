@@ -312,22 +312,25 @@ router.delete("/:id", authenticate, async (req, res) => {
 /* ---------------------------------------
    GET /api/reservation/admin/all
 --------------------------------------- */
+// GET all reservations for admin (dynamic population)
 router.get("/admin/all", authenticateAdmin, async (req, res) => {
   try {
     const reservations = await Reservation.find()
-    .populate(
-      "studentId",
-      "studentId firstName lastName email phone gender schoolname guardian guardianname grade validIDs"
-    )
-    .populate("bookId", "title author picture")
-    .sort({ reservedAt: -1 });
-
+      // Populate all student fields except password
+      .populate({
+        path: "studentId",
+        select: "-password"
+      })
+      // Populate all book fields
+      .populate("bookId")
+      .sort({ reservedAt: -1 });
 
     res.json({ success: true, reservations });
   } catch (err) {
     console.error("❌ Failed to fetch reservations:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
+
 
 export default router;
