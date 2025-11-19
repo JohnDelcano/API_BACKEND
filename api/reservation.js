@@ -369,15 +369,24 @@ router.delete("/admin/delete-all", authenticateAdmin, async (req, res) => {
 router.get("/admin/all", authenticateAdmin, async (req, res) => {
   try {
     const reservations = await Reservation.find()
-      .populate("studentId", "studentId firstName lastName email phone gender schoolname guardianname guardian validId")
+      .populate("studentId", "studentId firstName lastName email phone gender schoolname guardianname guardian validIDs")
       .populate("bookId", "title author picture")
       .sort({ reservedAt: -1 });
-    res.json({ success: true, reservations });
+
+    res.status(200).json({
+      success: true,
+      data: reservations
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Failed to fetch reservations" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch reservations",
+      error: err.message
+    });
   }
 });
+
 
   //👤 GET /api/reservation/my
 router.get("/my", authenticate, async (req, res) => {
