@@ -20,6 +20,9 @@ const studentSchema = new mongoose.Schema({
   favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
   activeReservations: { type: Number, default: 0 },
   cooldownUntil: { type: Date },
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
+  qrCode: { type: String },
   status: {
     type: String,
     enum: ["Pending", "Active", "Inactive", "Blocked"],

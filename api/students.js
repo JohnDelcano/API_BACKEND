@@ -9,7 +9,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { io } from "../server.js";
 import { authenticate } from "../auth.js";
-
+import QRCode from "qrcode";
 
 const router = express.Router();
 
@@ -472,6 +472,16 @@ router.post("/register", async (req, res) => {
     const parsedCategory = Array.isArray(category) ? category : JSON.parse(category || "[]");
     const birthdayDate = birthday ? new Date(birthday) : undefined;
 
+    // Generate QR code for studentId
+    const qrData = `${studentId}`; // you can also encode JSON or secure link
+    const qrCodeDataUrl = await QRCode.toDataURL(qrData);
+
+    // Upload QR code to Cloudinary
+    const qrUpload = await cloudinary.uploader.upload(qrCodeDataUrl, {
+      folder: "students/qr",
+      public_id: `QR_${studentId}`,
+    });
+
     // Create student
     const student = new Student({
       studentId,
@@ -489,7 +499,8 @@ router.post("/register", async (req, res) => {
       guardianname,
       gender,
       category: parsedCategory,
-      grade
+      grade,
+      qrCode: qrUpload.secure_url,
     });
 
     await student.save();
@@ -592,6 +603,84 @@ router.get("/me", async (req, res) => {
   }
 });
 
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: "Email required" });
+
+    const student = await Student.findOne({ email: email.trim().toLowerCase() });
+    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+
+    // Generate a secure token
+    const token = crypto.randomBytes(32).toString("hex");
+
+    student.resetPasswordToken = token;
+    student.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await student.save();
+
+    // Send email
+    const transporter = nodemailer.createTransport({
+      service: "Gmail", // or any SMTP service
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&email=${email}`;
+
+    await transporter.sendMail({
+      to: email,
+      from: process.env.EMAIL_USER,
+      subject: "Password Reset Request",
+      html: `<p>Hello ${student.firstName},</p>
+        <p>You requested a password reset. Click the link below to reset your password:</p>
+        <a href="${resetLink}">${resetLink}</a>
+        <p>This link will expire in 1 hour.</p>`,
+    });
+
+    res.json({ success: true, message: "Password reset email sent" });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    res.status(500).json({ success: false, message: "Failed to send reset email", error: err.message });
+  }
+});
+
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
+    }
+
+    const student = await Student.findOne({
+      email: email.trim().toLowerCase(),
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }, // token not expired
+    });
+
+    if (!student) {
+      return res.status(400).json({ success: false, message: "Invalid or expired token" });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    student.password = await bcrypt.hash(newPassword, salt);
+
+    // Clear token fields
+    student.resetPasswordToken = undefined;
+    student.resetPasswordExpires = undefined;
+
+    await student.save();
+
+    res.json({ success: true, message: "Password has been reset successfully" });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ success: false, message: "Failed to reset password", error: err.message });
+  }
+});
+
+
 router.put("/me", async (req, res) => {
   try {
     const auth = req.headers.authorization;
@@ -608,7 +697,12 @@ router.put("/me", async (req, res) => {
         if (field === "category") {
           student.category = Array.isArray(req.body.category) ? req.body.category : JSON.parse(req.body.category || "[]");
         } else {
-          student[field] = req.body[field];
+          // Automatically capitalize certain fields
+          if (["firstName", "lastName", "address", "schoolname", "guardianname", "grade"].includes(field)) {
+            student[field] = req.body[field].toUpperCase();
+          } else {
+            student[field] = req.body[field];
+          }
         }
       }
     });
@@ -620,6 +714,7 @@ router.put("/me", async (req, res) => {
     res.status(401).json({ success: false, message: "Invalid token", error: err.message });
   }
 });
+
 
 router.put("/:studentId/active", async (req, res) => {
   try {
