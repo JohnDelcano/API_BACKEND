@@ -372,21 +372,12 @@ router.get("/admin/all", authenticateAdmin, async (req, res) => {
       .populate("studentId", "studentId firstName lastName email phone gender schoolname guardianname guardian validIDs")
       .populate("bookId", "title author picture")
       .sort({ reservedAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      data: reservations
-    });
+    res.json({ success: true, reservations });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch reservations",
-      error: err.message
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch reservations" });
   }
 });
-
 
   //👤 GET /api/reservation/my
 router.get("/my", authenticate, async (req, res) => {
