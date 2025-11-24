@@ -104,50 +104,50 @@ log.prints.push({ quantity: printQuantity, date: new Date() });
   });
 
   // ✅ TIME OUT
-  router.post("/timeout", async (req, res) => {
-    try {
-      const { logId, studentId } = req.body;
-      const io = req.app.get("io");
+  // TIME OUT
+router.post("/timeout", async (req, res) => {
+  try {
+    const { logId, studentId, printCount } = req.body; // <-- added printCount
+    const io = req.app.get("io");
 
-      // 🟢 CASE 1: Admin provides logId directly
-      if (logId) {
-        const log = await Log.findById(logId);
-        if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    let log;
 
-        log.timeOut = new Date();
-        log.status = "Checked Out";
-        await log.save();
-
-        const populatedLog = await log.populate("student", "studentId firstName lastName");
-        io.emit("logUpdated", { type: "timeout", log: populatedLog });
-        return res.json({ success: true, log: populatedLog });
-      }
-
-      // 🟢 CASE 2: Student enters studentId
-      if (!studentId)
-        return res.status(400).json({ success: false, message: "Student ID required" });
-
+    if (logId) {
+      log = await Log.findById(logId);
+      if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    } else if (studentId) {
       const student = await Student.findOne({ studentId });
       if (!student)
         return res.status(404).json({ success: false, message: "Student not found" });
 
-      // Find active log
-      const log = await Log.findOne({ student: student._id, timeOut: null }).sort({ timeIn: -1 });
+      log = await Log.findOne({ student: student._id, timeOut: null }).sort({ timeIn: -1 });
       if (!log)
         return res.status(404).json({ success: false, message: "No active time-in found" });
-
-      log.timeOut = new Date();
-      log.status = "Checked Out";
-      await log.save();
-
-      const populatedLog = await log.populate("student", "studentId firstName lastName");
-      io.emit("logUpdated", { type: "timeout", log: populatedLog });
-
-      res.json({ success: true, log: populatedLog });
-    } catch (err) {
-      console.error("Timeout error:", err);
-      res.status(500).json({ success: false, message: err.message });
+    } else {
+      return res.status(400).json({ success: false, message: "logId or studentId required" });
     }
-  });
+
+    log.timeOut = new Date();
+    log.status = "Checked Out";
+
+    // ✅ Save the number of prints
+    if (printCount !== undefined) {
+      log.printCount = printCount;
+      log.prints.push({ quantity: printCount, date: new Date() });
+      log.lastPrintedAt = new Date();
+    }
+
+    await log.save();
+    const populatedLog = await log.populate("student", "studentId firstName lastName");
+
+    io.emit("logUpdated", { type: "timeout", log: populatedLog });
+
+    res.json({ success: true, log: populatedLog });
+  } catch (err) {
+    console.error("Timeout error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 
   export default router;
