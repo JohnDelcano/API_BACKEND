@@ -39,20 +39,37 @@ router.post("/timein", async (req, res) => {
       });
     }
 
+    // Check if student has already printed today in any log
+    const todayPrintedLog = await Log.findOne({
+      student: student._id,
+      lastPrintedAt: {
+        $gte: dayjs().startOf("day").toDate(),
+        $lte: dayjs().endOf("day").toDate(),
+      },
+    });
+
+    // Create new time-in log
     const log = new Log({ student: student._id });
     await log.save();
 
     const populatedLog = await log.populate("student", "studentId firstName lastName");
 
-    const io = req.app.get("io");
-    io.emit("logUpdated", { type: "timein", log: populatedLog });
+    // Add alreadyPrinted flag
+    const responseLog = {
+      ...populatedLog.toObject(),
+      alreadyPrinted: !!todayPrintedLog,
+    };
 
-    res.json({ success: true, log: populatedLog });
+    const io = req.app.get("io");
+    io.emit("logUpdated", { type: "timein", log: responseLog });
+
+    res.json({ success: true, log: responseLog });
   } catch (err) {
     console.error("Time-in error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // ✅ TIME OUT (with print count)
 router.post("/timeout", async (req, res) => {
