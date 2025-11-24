@@ -1,113 +1,63 @@
-  import express from "express";
-  import Log from "../models/Log.js";
-  import Student from "../models/Student.js";
-  import dayjs from "dayjs";
-  const router = express.Router();
+import express from "express";
+import Log from "../models/Log.js";
+import Student from "../models/Student.js";
+import dayjs from "dayjs";
 
-  // POST /api/logs/print
-  router.post("/print", async (req, res) => {
-    try {
-      const { logId, studentId } = req.body;
-      const io = req.app.get("io");
+const router = express.Router();
 
-      let log;
+// ✅ GET all logs
+router.get("/", async (req, res) => {
+  try {
+    const logs = await Log.find()
+      .populate("student", "studentId firstName lastName")
+      .sort({ timeIn: -1 });
 
-      // Use logId if provided
-      if (logId) {
-        log = await Log.findById(logId);
-        if (!log) return res.status(404).json({ success: false, message: "Log not found" });
-      } else if (studentId) {
-        const student = await Student.findOne({ studentId });
-        if (!student)
-          return res.status(404).json({ success: false, message: "Student not found" });
+    res.json({ success: true, data: logs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-        // Find today's log
-        log = await Log.findOne({ student: student._id }).sort({ timeIn: -1 });
-        if (!log) return res.status(404).json({ success: false, message: "No log found for today" });
-      } else {
-        return res.status(400).json({ success: false, message: "logId or studentId required" });
-      }
+// ✅ TIME IN
+router.post("/timein", async (req, res) => {
+  try {
+    const { studentId } = req.body;
 
-      // ✅ Check if already printed today
-      if (log.lastPrintedAt && dayjs(log.lastPrintedAt).isSame(dayjs(), "day")) {
-        return res.status(400).json({ success: false, message: "User already printed today" });
-      }
+    if (!studentId)
+      return res.status(400).json({ success: false, message: "Student ID required" });
 
-      // Update print info
-      log.printCount = (log.printCount || 0) + printQuantity;
-log.lastPrintedAt = new Date();
-log.prints.push({ quantity: printQuantity, date: new Date() });
-      await log.save();
+    const student = await Student.findOne({ studentId });
+    if (!student)
+      return res.status(404).json({ success: false, message: "Student not found" });
 
-      const populatedLog = await log.populate("student", "studentId firstName lastName");
-
-      // 🔔 Emit update to connected clients
-      io.emit("logUpdated", { type: "print", log: populatedLog });
-
-      res.json({ success: true, log: populatedLog });
-    } catch (err) {
-      console.error("Print error:", err);
-      res.status(500).json({ success: false, message: err.message });
+    // Check if already timed in (no timeout yet)
+    const existingLog = await Log.findOne({ student: student._id, timeOut: null });
+    if (existingLog) {
+      return res.status(400).json({
+        success: false,
+        message: `${student.firstName} ${student.lastName} is already timed in.`,
+      });
     }
-  });
 
-  // ✅ GET all logs
-  router.get("/", async (req, res) => {
-    try {
-      const logs = await Log.find()
-        .populate("student", "studentId firstName lastName")
-        .sort({ timeIn: -1 });
+    const log = new Log({ student: student._id });
+    await log.save();
 
-      res.json({ success: true, data: logs });
-    } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+    const populatedLog = await log.populate("student", "studentId firstName lastName");
 
-  // ✅ TIME IN
-  router.post("/timein", async (req, res) => {
-    try {
-      const { studentId } = req.body;
+    const io = req.app.get("io");
+    io.emit("logUpdated", { type: "timein", log: populatedLog });
 
-      if (!studentId)
-        return res.status(400).json({ success: false, message: "Student ID required" });
+    res.json({ success: true, log: populatedLog });
+  } catch (err) {
+    console.error("Time-in error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-      // Find student
-      const student = await Student.findOne({ studentId });
-      if (!student)
-        return res.status(404).json({ success: false, message: "Student not found" });
-
-      // 🛑 Check if student already timed in (no timeout yet)
-      const existingLog = await Log.findOne({ student: student._id, timeOut: null });
-      if (existingLog) {
-        return res.status(400).json({
-          success: false,
-          message: `${student.firstName} ${student.lastName} is already timed in.`,
-        });
-      }
-
-      // ✅ Create new log entry for time-in
-      const log = new Log({ student: student._id });
-      await log.save();
-
-      const populatedLog = await log.populate("student", "studentId firstName lastName");
-
-      // 🔔 Emit update to connected clients (real-time)
-      const io = req.app.get("io");
-      io.emit("logUpdated", { type: "timein", log: populatedLog });
-
-      res.json({ success: true, log: populatedLog });
-    } catch (err) {
-      console.error("Time-in error:", err);
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  // ✅ TIME OUT
-  // TIME OUT
+// ✅ TIME OUT (with print count)
 router.post("/timeout", async (req, res) => {
   try {
-    const { logId, studentId, printCount } = req.body; // <-- added printCount
+    const { logId, studentId, printCount } = req.body;
     const io = req.app.get("io");
 
     let log;
@@ -130,8 +80,8 @@ router.post("/timeout", async (req, res) => {
     log.timeOut = new Date();
     log.status = "Checked Out";
 
-    // ✅ Save the number of prints
-    if (printCount !== undefined) {
+    // ✅ Save print info if provided
+    if (printCount !== undefined && printCount > 0) {
       log.printCount = printCount;
       log.prints.push({ quantity: printCount, date: new Date() });
       log.lastPrintedAt = new Date();
@@ -149,5 +99,4 @@ router.post("/timeout", async (req, res) => {
   }
 });
 
-
-  export default router;
+export default router;
