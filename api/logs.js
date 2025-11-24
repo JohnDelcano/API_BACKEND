@@ -1,8 +1,54 @@
 import express from "express";
 import Log from "../models/Log.js";
 import Student from "../models/Student.js";
-
+import dayjs from "dayjs";
 const router = express.Router();
+
+// POST /api/logs/print
+router.post("/print", async (req, res) => {
+  try {
+    const { logId, studentId } = req.body;
+    const io = req.app.get("io");
+
+    let log;
+
+    // Use logId if provided
+    if (logId) {
+      log = await Log.findById(logId);
+      if (!log) return res.status(404).json({ success: false, message: "Log not found" });
+    } else if (studentId) {
+      const student = await Student.findOne({ studentId });
+      if (!student)
+        return res.status(404).json({ success: false, message: "Student not found" });
+
+      // Find today's log
+      log = await Log.findOne({ student: student._id }).sort({ timeIn: -1 });
+      if (!log) return res.status(404).json({ success: false, message: "No log found for today" });
+    } else {
+      return res.status(400).json({ success: false, message: "logId or studentId required" });
+    }
+
+    // ✅ Check if already printed today
+    if (log.lastPrintedAt && dayjs(log.lastPrintedAt).isSame(dayjs(), "day")) {
+      return res.status(400).json({ success: false, message: "User already printed today" });
+    }
+
+    // Update print info
+    log.printCount = (log.printCount || 0) + 1;
+    log.lastPrintedAt = new Date();
+    await log.save();
+
+    const populatedLog = await log.populate("student", "studentId firstName lastName");
+
+    // 🔔 Emit update to connected clients
+    io.emit("logUpdated", { type: "print", log: populatedLog });
+
+    res.json({ success: true, log: populatedLog });
+  } catch (err) {
+    console.error("Print error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ✅ GET all logs
 router.get("/", async (req, res) => {
