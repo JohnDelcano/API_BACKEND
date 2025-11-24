@@ -7,6 +7,12 @@ const logSchema = new mongoose.Schema({
   status: { type: String, enum: ["Checked In", "Checked Out", "Pending"], default: "Checked In" },
   printCount: { type: Number, default: 0 },
   lastPrintedAt: { type: Date },
+  prints: [
+    {
+      quantity: { type: Number, required: true },
+      date: { type: Date, default: Date.now },
+    },
+  ],
 }, { timestamps: true });
 
 const Log = mongoose.model("Log", logSchema);
