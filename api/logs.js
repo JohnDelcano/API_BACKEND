@@ -57,7 +57,7 @@ router.post("/timein", async (req, res) => {
     // Add alreadyPrinted flag
     const responseLog = {
       ...populatedLog.toObject(),
-      alreadyPrinted: !!todayPrintedLog,
+      alreadyPrinted: !!todayPrintedLog, // ✅ if printed today, input will be disabled
     };
 
     const io = req.app.get("io");
@@ -69,7 +69,6 @@ router.post("/timein", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 
 // ✅ TIME OUT (with print count)
 router.post("/timeout", async (req, res) => {
@@ -94,15 +93,38 @@ router.post("/timeout", async (req, res) => {
       return res.status(400).json({ success: false, message: "logId or studentId required" });
     }
 
-    log.timeOut = new Date();
-    log.status = "Checked Out";
+    // Prevent saving new prints if already printed today
+    const alreadyPrintedToday = await Log.findOne({
+      student: log.student,
+      lastPrintedAt: {
+        $gte: dayjs().startOf("day").toDate(),
+        $lte: dayjs().endOf("day").toDate(),
+      },
+    });
 
-    // ✅ Save print info if provided
+    if (alreadyPrintedToday) {
+      log.timeOut = new Date();
+      log.status = "Checked Out";
+      await log.save();
+      const populatedLog = await log.populate("student", "studentId firstName lastName");
+      io.emit("logUpdated", { type: "timeout", log: populatedLog });
+
+      return res.json({
+        success: true,
+        log: { ...populatedLog.toObject(), alreadyPrinted: true },
+        message: "Already printed today. Print count not saved.",
+      });
+    }
+
+    // Save print info if provided
     if (printCount !== undefined && printCount > 0) {
       log.printCount = printCount;
       log.prints.push({ quantity: printCount, date: new Date() });
       log.lastPrintedAt = new Date();
     }
+
+    log.timeOut = new Date();
+    log.status = "Checked Out";
 
     await log.save();
     const populatedLog = await log.populate("student", "studentId firstName lastName");
