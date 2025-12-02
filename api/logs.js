@@ -138,4 +138,27 @@ router.post("/timeout", async (req, res) => {
   }
 });
 
+router.get("/monthly", async (req, res) => {
+  try {
+    const logs = await Log.find({ lastPrintedAt: { $ne: null } }).populate("student", "studentId firstName lastName");
+
+    // Plain JS object
+    const monthlyStats = {};
+
+    logs.forEach(log => {
+      const month = dayjs(log.lastPrintedAt).format("MMM");
+      if (!monthlyStats[month]) monthlyStats[month] = { printed: 0 };
+      monthlyStats[month].printed += 1; // each log counts as 1 student printed
+    });
+
+    const result = Object.entries(monthlyStats).map(([month, data]) => ({ month, ...data }));
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
 export default router;
