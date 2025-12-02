@@ -183,6 +183,7 @@ router.patch("/:id/status", authenticateAdmin, async (req, res) => {
 
 // APPROVED
 if (status === "approved") {
+  reservation.dueDate = new Date(customDueDate);
   io.to(studentIdStr).emit("reservationApproved", { ...reservation.toObject(), bookTitle });
   io.to(studentIdStr).emit("reservationUpdated", { ...reservation.toObject(), bookTitle });
   io.to("admins").emit("reservationUpdated", { ...reservation.toObject(), bookTitle });
