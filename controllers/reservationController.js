@@ -8,7 +8,7 @@ import Book from "../models/Book.js";
 const createReservation = async (req, res) => {
   try {
     const { bookId, expiresAt } = req.body;
-    const studentId = req.user.id;
+    const studentId = req.user._id;
 
     // ✅ STEP 1: Check for active reservation
     const existingReservation = await Reservation.findOne({
@@ -92,7 +92,7 @@ export const approveReservation = async (req, res) => {
 export const cancelReservation = async (req, res) => {
   try {
     const { id } = req.params; // reservation ID
-    const studentId = req.user.id;
+    const studentId = req.user._id;
 
     const reservation = await Reservation.findOne({
       _id: id,
@@ -126,7 +126,7 @@ export const cancelReservation = async (req, res) => {
 // ================================
 export const getMyReservations = async (req, res) => {
   try {
-    const studentId = req.user.id;
+    const studentId = req.user._id;
     const reservations = await Reservation.find({ studentId })
       .populate("bookId")
       .sort({ updatedAt: -1 });

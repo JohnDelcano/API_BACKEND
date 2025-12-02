@@ -493,6 +493,19 @@ router.post("/register", async (req, res) => {
 
     await student.save();
 
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        io.to("admins").emit("newStudentRegistered", {
+          ...student.toObject(),
+          password: undefined,
+        });
+        console.log("✅ Emitted newStudentRegistered for", student._id);
+      }
+    } catch (e) {
+      console.warn("Failed to emit newStudentRegistered:", e);
+    }
+
     res.status(201).json({
       success: true,
       message: "Student registered successfully",
