@@ -9,7 +9,8 @@ import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { io } from "../server.js";
 import { authenticate } from "../auth.js";
-
+import crypto from "crypto";
+import nodemailer from "nodemailer"; 
 const router = express.Router();
 
 
