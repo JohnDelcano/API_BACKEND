@@ -617,35 +617,20 @@ router.post("/forgot-password", async (req, res) => {
     // Generate a secure token
     const token = crypto.randomBytes(32).toString("hex");
 
+    // Save token and expiry
     student.resetPasswordToken = token;
     student.resetPasswordExpires = Date.now() + 3600000; // 1 hour
     await student.save();
 
-    // Send email
-    const transporter = nodemailer.createTransport({
-      service: "Gmail", // or any SMTP service
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+    // 🔹 Instead of sending email, return token for testing
+    res.json({
+      success: true,
+      message: "Password reset token generated",
+      token, // frontend can use this token directly
     });
-
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&email=${email}`;
-
-    await transporter.sendMail({
-      to: email,
-      from: process.env.EMAIL_USER,
-      subject: "Password Reset Request",
-      html: `<p>Hello ${student.firstName},</p>
-        <p>You requested a password reset. Click the link below to reset your password:</p>
-        <a href="${resetLink}">${resetLink}</a>
-        <p>This link will expire in 1 hour.</p>`,
-    });
-
-    res.json({ success: true, message: "Password reset email sent" });
   } catch (err) {
     console.error("Forgot password error:", err);
-    res.status(500).json({ success: false, message: "Failed to send reset email", error: err.message });
+    res.status(500).json({ success: false, message: "Failed to generate reset token", error: err.message });
   }
 });
 
