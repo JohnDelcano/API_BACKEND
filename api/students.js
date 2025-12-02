@@ -609,28 +609,24 @@ router.get("/me", async (req, res) => {
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ success: false, message: "Email required" });
+    if (!email)
+      return res.status(400).json({ success: false, message: "Email required" });
 
     const student = await Student.findOne({ email: email.trim().toLowerCase() });
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+    if (!student)
+      return res.status(404).json({ success: false, message: "Student not found" });
 
-    // Generate a secure token
+    // Generate token
     const token = crypto.randomBytes(32).toString("hex");
-
-    // Save token and expiry
     student.resetPasswordToken = token;
     student.resetPasswordExpires = Date.now() + 3600000; // 1 hour
     await student.save();
 
-    // 🔹 Instead of sending email, return token for testing
-    res.json({
-      success: true,
-      message: "Password reset token generated",
-      token, // frontend can use this token directly
-    });
+    // Instead of sending email, just return token
+    res.json({ success: true, token });
   } catch (err) {
-    console.error("Forgot password error:", err);
-    res.status(500).json({ success: false, message: "Failed to generate reset token", error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to generate reset token" });
   }
 });
 
