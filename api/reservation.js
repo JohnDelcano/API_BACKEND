@@ -105,10 +105,11 @@ router.post("/:bookId", authenticate, async (req, res) => {
     });
 
     if (activeReservationsCount >= MAX_ACTIVE_RESERVATIONS) {
-      throw new Error(
-        `You already have ${MAX_ACTIVE_RESERVATIONS} active reservations. Cancel or return a book before reserving again.`
-      );
-    }
+  return res.status(400).json({
+    success: false,
+    message: `You already have ${MAX_ACTIVE_RESERVATIONS} active reservations. Cancel or return a book before reserving again.`,
+  });
+}
     // ------------------------------------------------------
 
     // Check and update book availability
