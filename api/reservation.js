@@ -87,21 +87,31 @@ router.post("/:bookId", authenticate, async (req, res) => {
     return res.status(400).json({ success: false, error: "Invalid book ID" });
 
   try {
+    // Expire old reservations before proceeding
     await expireOldReservations(io);
 
+    // Start transaction if available
     const { session, txnStarted } = await startSessionWithTxn();
 
+    // Fetch student
     const studentDoc = await Student.findById(student._id).session(session);
     if (!studentDoc) throw new Error("Student not found");
     if (studentDoc.status !== "Active") throw new Error("Account must be verified");
 
-    const activeApproved = await Reservation.countDocuments({
+    // --------- NEW: Check max active reservations ---------
+    const activeReservationsCount = await Reservation.countDocuments({
       studentId: studentDoc._id,
-      status: "approved",
+      status: { $in: ["reserved", "approved"] }, // only active reservations
     });
-    if (activeApproved >= MAX_ACTIVE_RESERVATIONS)
-      throw new Error(`You can only have ${MAX_ACTIVE_RESERVATIONS} borrowed books.`);
 
+    if (activeReservationsCount >= MAX_ACTIVE_RESERVATIONS) {
+      throw new Error(
+        `You already have ${MAX_ACTIVE_RESERVATIONS} active reservations. Cancel or return a book before reserving again.`
+      );
+    }
+    // ------------------------------------------------------
+
+    // Check and update book availability
     const book = await Book.findOneAndUpdate(
       { _id: bookId, availableCount: { $gt: 0 } },
       { $inc: { availableCount: -1, reservedCount: 1 }, status: "Reserved" },
@@ -117,8 +127,10 @@ router.post("/:bookId", authenticate, async (req, res) => {
       status: book.status,
     });
 
+    // Set expiration for reservation
     const expiresAt = new Date(Date.now() + RESERVATION_EXPIRY_HOURS * 60 * 60 * 1000);
 
+    // Create reservation
     const [reservation] = await Reservation.create(
       [
         {
@@ -132,22 +144,25 @@ router.post("/:bookId", authenticate, async (req, res) => {
       { session }
     );
 
+    // Commit transaction
     if (txnStarted) await session.commitTransaction();
     session.endSession();
 
+    // Populate reservation for frontend
     const populated = await Reservation.findById(reservation._id)
-  .populate("studentId", "studentId firstName lastName")
-  .populate("bookId", "title author picture");
+      .populate("studentId", "studentId firstName lastName")
+      .populate("bookId", "title author picture");
 
-const studentIdStr = studentDoc._id.toString();
-const bookTitle = populated.bookId?.title || "Unknown Book";
+    const studentIdStr = studentDoc._id.toString();
+    const bookTitle = populated.bookId?.title || "Unknown Book";
 
-// Emit notification with book title
-io.to(studentIdStr).emit("reservationCreated", { ...populated.toObject(), bookTitle });
-io.to(studentIdStr).emit("reservationUpdated", { ...populated.toObject(), bookTitle });
-io.to("admins").emit("reservationCreated", { ...populated.toObject(), bookTitle });
-io.to("admins").emit("reservationUpdated", { ...populated.toObject(), bookTitle });
+    // Emit notifications
+    io.to(studentIdStr).emit("reservationCreated", { ...populated.toObject(), bookTitle });
+    io.to(studentIdStr).emit("reservationUpdated", { ...populated.toObject(), bookTitle });
+    io.to("admins").emit("reservationCreated", { ...populated.toObject(), bookTitle });
+    io.to("admins").emit("reservationUpdated", { ...populated.toObject(), bookTitle });
 
+    // Respond to client
     res.status(201).json({
       success: true,
       message: "Book reserved successfully.",
@@ -158,6 +173,7 @@ io.to("admins").emit("reservationUpdated", { ...populated.toObject(), bookTitle 
     res.status(400).json({ success: false, error: err.message || "Reservation failed" });
   }
 });
+
 
 /* ---------------------------------------
    ✏ PATCH /api/reservation/:id/status
