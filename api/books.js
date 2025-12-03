@@ -26,6 +26,8 @@ const storage = new CloudinaryStorage({
         folder: "librosync/pdfs",
         resource_type: "raw", // important for non-image
         allowed_formats: ["pdf"],
+        public_id: file.originalname.split(".")[0],
+        overwrite: true, 
       };
     }
 
