@@ -20,18 +20,16 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary,
   params: (req, file) => {
-    // For pdfFile field -> upload as raw resource to folder "librosync/pdfs"
     if (file.fieldname === "pdfFile") {
       return {
         folder: "librosync/pdfs",
-        resource_type: "raw", // important for non-image
+        resource_type: "raw",
         allowed_formats: ["pdf"],
         public_id: file.originalname.split(".")[0],
-        overwrite: true, 
+        overwrite: true,
       };
     }
-
-    // Default -> picture (images)
+    // default -> picture
     return {
       folder: "librosync/books",
       allowed_formats: ["jpg", "jpeg", "png"],
@@ -39,6 +37,7 @@ const storage = new CloudinaryStorage({
     };
   },
 });
+
 
 const upload = multer({ storage });
 
@@ -129,43 +128,56 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      let { book_id, title, author, quantity, quality, category } = req.body;
+      // 1️⃣ Extract text fields from req.body
+      const {
+        title,
+        author,
+        quantity,
+        category,
+        overview,
+        book_id,
+        quality,
+      } = req.body;
 
-      // Extract uploaded file URLs (Cloudinary provides `path`)
-      const pictureUrl = req.files?.picture?.[0]?.path ?? req.body.picture ?? null;
-      const pdfUrl = req.files?.pdfFile?.[0]?.path ?? req.body.pdfFile ?? null;
+      // 2️⃣ Extract uploaded file URLs from Cloudinary
+      const pictureUrl = req.files?.picture?.[0]?.path ?? req.body.picture ?? "";
+      const pdfUrl = req.files?.pdfFile?.[0]?.path ?? req.body.pdfFile ?? "";
 
-      // Normalize category
+      // 3️⃣ Normalize category
       const normalizedCategory = Array.isArray(category)
         ? category
         : category
         ? [category]
         : [];
 
+      // 4️⃣ Create new book
       const newBook = new Book({
         book_id,
         title,
         author,
-        quantity,
+        quantity: quantity ? Number(quantity) : 0,
         quality,
-        availableCount: quantity,
+        availableCount: quantity ? Number(quantity) : 0,
         reservedCount: 0,
         borrowedCount: 0,
+        lostCount: 0,
         category: normalizedCategory,
         picture: pictureUrl,
         pdfFile: pdfUrl,
+        overview: overview ?? "",
         favoritesCount: 0,
         status: "Available",
       });
 
       await newBook.save();
 
-      // Notify all connected clients
+      // 5️⃣ Notify all connected clients via Socket.IO
       const io = req.app.get("io");
       io?.emit("bookAdded", newBook);
 
       res.status(201).json({ message: "Book added successfully!", book: newBook });
     } catch (error) {
+      console.error("POST /books error:", error);
       res.status(500).json({ message: "Error adding book", error: error.message });
     }
   }
@@ -249,6 +261,7 @@ async function handleUpdate(req, res) {
       category: normalizedCategory,
       picture: pictureUrl,
       pdfFile: pdfUrl,
+      overview: req.body.overview ?? existingBook.overview,
     };
 
     // adjust available count if quantity changes (ensure numeric)
