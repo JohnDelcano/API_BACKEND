@@ -9,7 +9,7 @@ const bookSchema = new mongoose.Schema({
   borrowedCount: { type: Number, default: 0 },
   lostCount: { type: Number, default: 0 },
   pdfFile: { type: String, default: null },
-  overview: { type: String, default: "" },
+  overview: { type: String },
   category: [{ type: String }],
   picture: { type: String },
   status: {
